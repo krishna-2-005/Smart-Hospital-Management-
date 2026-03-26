@@ -123,4 +123,32 @@
   body {
     @apply bg-background text-foreground;
   }
+  
+  /* Enhanced cursor and hover effects */
+  a, button, [role="button"], [tabindex="0"] {
+    @apply cursor-pointer;
+  }
+  
+  input, textarea, [contenteditable] {
+    @apply cursor-text;
+  }
+  
+  /* Smooth hover transitions for interactive elements */
+  .hover-lift {
+    @apply transition-all duration-300 hover:scale-105 hover:shadow-lg;
+  }
+  
+  .hover-glow {
+    @apply transition-all duration-200 hover:shadow-md hover:shadow-primary/20;
+  }
+  
+  /* Table row hover effects */
+  tr:hover {
+    @apply bg-accent/50 cursor-pointer;
+  }
+  
+  /* Navigation link hover effects */
+  nav a {
+    @apply transition-colors duration-200 hover:text-primary;
+  }
 }

@@ -61,11 +61,11 @@ export default function Home() {
             <h1 className="text-2xl font-bold text-primary">HealthHub</h1>
           </div>
           <div className="flex gap-3">
-            <Link href="/auth/login">
-              <Button variant="outline">Sign In</Button>
+            <Link href="/auth/login" className="cursor-pointer">
+              <Button variant="outline" className="hover:scale-105 transition-transform duration-200">Sign In</Button>
             </Link>
-            <Link href="/auth/register">
-              <Button>Get Started</Button>
+            <Link href="/auth/register" className="cursor-pointer">
+              <Button className="hover:scale-105 transition-transform duration-200">Get Started</Button>
             </Link>
           </div>
         </div>
@@ -81,17 +81,17 @@ export default function Home() {
           Streamline patient care, manage queues efficiently, allocate beds intelligently, and respond to emergencies with precision.
         </p>
         <div className="flex gap-4 justify-center flex-wrap">
-          <Link href="/auth/register">
-            <Button size="lg" className="bg-primary hover:bg-primary/90">
+          <Link href="/auth/register" className="cursor-pointer">
+            <Button size="lg" className="bg-primary hover:bg-primary/90 hover:scale-105 transition-all duration-200">
               Start Free Trial
             </Button>
           </Link>
-          <Link href="/emergency">
-            <Button size="lg" variant="destructive">
+          <Link href="/emergency" className="cursor-pointer">
+            <Button size="lg" variant="destructive" className="hover:scale-105 transition-all duration-200">
               Emergency Without Login
             </Button>
           </Link>
-          <Button size="lg" variant="outline">
+          <Button size="lg" variant="outline" className="hover:scale-105 transition-all duration-200 cursor-pointer">
             Watch Demo
           </Button>
         </div>
@@ -127,10 +127,10 @@ export default function Home() {
             return (
               <div
                 key={idx}
-                className="p-6 rounded-lg bg-card border border-secondary/10 hover:border-secondary/30 transition-colors"
+                className="p-6 rounded-lg bg-card border border-secondary/10 hover:border-secondary/30 hover:shadow-lg hover:scale-105 transition-all duration-300 cursor-pointer group"
               >
-                <Icon className="w-10 h-10 text-secondary mb-4" />
-                <h4 className="text-lg font-semibold text-foreground mb-2">{feature.title}</h4>
+                <Icon className="w-10 h-10 text-secondary mb-4 group-hover:text-primary transition-colors duration-300" />
+                <h4 className="text-lg font-semibold text-foreground mb-2 group-hover:text-primary transition-colors duration-300">{feature.title}</h4>
                 <p className="text-sm text-muted-foreground">{feature.description}</p>
               </div>
             );
@@ -148,20 +148,20 @@ export default function Home() {
             { role: 'Reception', email: 'reception@hospital.com', password: 'reception123' },
             { role: 'Patient', email: 'patient@hospital.com', password: 'patient123' },
           ].map((demo, idx) => (
-            <div key={idx} className="p-4 bg-card rounded border border-secondary/20">
-              <p className="font-semibold text-foreground mb-2">{demo.role}</p>
+            <div key={idx} className="p-4 bg-card rounded border border-secondary/20 hover:border-secondary/40 hover:shadow-md hover:scale-105 transition-all duration-300 cursor-pointer group">
+              <p className="font-semibold text-foreground mb-2 group-hover:text-primary transition-colors duration-300">{demo.role}</p>
               <p className="text-xs text-muted-foreground mb-1">
-                <span className="font-mono bg-secondary/10 px-2 py-1 rounded">{demo.email}</span>
+                <span className="font-mono bg-secondary/10 px-2 py-1 rounded hover:bg-secondary/20 transition-colors duration-200 cursor-text">{demo.email}</span>
               </p>
               <p className="text-xs text-muted-foreground">
-                <span className="font-mono bg-secondary/10 px-2 py-1 rounded">{demo.password}</span>
+                <span className="font-mono bg-secondary/10 px-2 py-1 rounded hover:bg-secondary/20 transition-colors duration-200 cursor-text">{demo.password}</span>
               </p>
             </div>
           ))}
         </div>
         <div className="text-center mt-8">
-          <Link href="/auth/login">
-            <Button className="bg-primary hover:bg-primary/90">Try Demo Now</Button>
+          <Link href="/auth/login" className="cursor-pointer">
+            <Button className="bg-primary hover:bg-primary/90 hover:scale-105 transition-all duration-200">Try Demo Now</Button>
           </Link>
         </div>
       </section>
