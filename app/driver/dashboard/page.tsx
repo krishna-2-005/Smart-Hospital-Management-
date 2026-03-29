@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Ambulance,
@@ -15,6 +15,7 @@ import {
   User,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -81,6 +82,13 @@ type DriverOverview = {
     category: string;
     target: 'patient' | 'ambulance' | 'hospital';
   }>;
+  hospitalAcknowledgements: Array<{
+    requestId: number;
+    patientName: string;
+    message: string;
+    time: string;
+    senderRole: string;
+  }>;
   performance: {
     completedCasesToday: number;
     activeCases: number;
@@ -104,6 +112,8 @@ const ALERT_TYPE_OPTIONS: Array<{ value: AlertType; label: string }> = [
   { value: 'security-support', label: 'Security Support Needed' },
 ];
 
+const LOCATION_PREF_KEY = 'driver_live_location_enabled';
+
 export default function DriverDashboardPage() {
   const router = useRouter();
   const { toast } = useToast();
@@ -112,6 +122,12 @@ export default function DriverDashboardPage() {
   const [isUpdating, setIsUpdating] = useState(false);
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [isSendingAlert, setIsSendingAlert] = useState(false);
+  const [isUpdatingLocation, setIsUpdatingLocation] = useState(false);
+  const [locationPermission, setLocationPermission] = useState<'unknown' | 'granted' | 'denied' | 'prompt' | 'unsupported'>('unknown');
+  const [isLocationSharing, setIsLocationSharing] = useState(false);
+  const [lastLocationSync, setLastLocationSync] = useState<string | null>(null);
+  const [showAdvancedEdit, setShowAdvancedEdit] = useState(false);
+  const [wantsLiveLocation, setWantsLiveLocation] = useState(true);
   const [note, setNote] = useState('');
   const [alertType, setAlertType] = useState<AlertType>('patient-critical');
   const [alertMessage, setAlertMessage] = useState('');
@@ -130,6 +146,8 @@ export default function DriverDashboardPage() {
     vehicleNotes: '',
     lastMaintenanceDate: '',
   });
+  const geoWatchIdRef = useRef<number | null>(null);
+  const lastLocationPushAtRef = useRef<number>(0);
 
   const loadOverview = async (showLoader = false) => {
     if (showLoader) setIsLoading(true);
@@ -217,11 +235,11 @@ export default function DriverDashboardPage() {
   const handleSaveDriverDetails = async () => {
     setIsSavingProfile(true);
     try {
+      const parsedLat = Number(profileForm.lat);
+      const parsedLng = Number(profileForm.lng);
       const payload = {
         name: profileForm.name,
         phone: profileForm.phone,
-        lat: Number(profileForm.lat),
-        lng: Number(profileForm.lng),
         shiftStatus: profileForm.shiftStatus,
         fuelLevelPercent: Number(profileForm.fuelLevelPercent),
         standbyZone: profileForm.standbyZone,
@@ -230,6 +248,8 @@ export default function DriverDashboardPage() {
         stretcherReady: profileForm.stretcherReady,
         vehicleNotes: profileForm.vehicleNotes,
         lastMaintenanceDate: profileForm.lastMaintenanceDate,
+        ...(Number.isFinite(parsedLat) ? { lat: parsedLat } : {}),
+        ...(Number.isFinite(parsedLng) ? { lng: parsedLng } : {}),
       };
 
       const res = await fetch('/api/driver/profile', {
@@ -260,6 +280,221 @@ export default function DriverDashboardPage() {
       setIsSavingProfile(false);
     }
   };
+
+  const pushLiveLocation = async (lat: number, lng: number, silent = true) => {
+    const now = Date.now();
+    if (now - lastLocationPushAtRef.current < 25000) return;
+
+    lastLocationPushAtRef.current = now;
+    setIsUpdatingLocation(true);
+    try {
+      const res = await fetch('/api/driver/profile', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ lat, lng }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Location update failed');
+      }
+
+      setOverview(data.overview || null);
+      setLastLocationSync(new Date().toISOString());
+      if (!silent) {
+        toast({
+          title: 'Live Location Enabled',
+          description: 'Your current location is being shared with dispatch.',
+        });
+      }
+    } catch (error: any) {
+      if (!silent) {
+        toast({
+          title: 'Location Sync Failed',
+          description: error.message || 'Unable to sync current location',
+          variant: 'destructive',
+        });
+      }
+    } finally {
+      setIsUpdatingLocation(false);
+    }
+  };
+
+  const stopLiveLocationSharing = () => {
+    if (geoWatchIdRef.current != null && navigator.geolocation) {
+      navigator.geolocation.clearWatch(geoWatchIdRef.current);
+      geoWatchIdRef.current = null;
+    }
+    setIsLocationSharing(false);
+    try {
+      localStorage.setItem(LOCATION_PREF_KEY, 'false');
+    } catch {
+      // Ignore storage errors in constrained browser contexts.
+    }
+    setWantsLiveLocation(false);
+  };
+
+  const startLiveLocationSharing = () => {
+    if (!navigator.geolocation) {
+      setLocationPermission('unsupported');
+      toast({
+        title: 'Location Not Supported',
+        description: 'This device/browser does not support GPS location.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        setLocationPermission('granted');
+        setIsLocationSharing(true);
+        try {
+          localStorage.setItem(LOCATION_PREF_KEY, 'true');
+        } catch {
+          // Ignore storage errors in constrained browser contexts.
+        }
+        setWantsLiveLocation(true);
+
+        await pushLiveLocation(
+          Number(position.coords.latitude.toFixed(6)),
+          Number(position.coords.longitude.toFixed(6)),
+          false
+        );
+
+        if (geoWatchIdRef.current != null) {
+          navigator.geolocation.clearWatch(geoWatchIdRef.current);
+        }
+
+        geoWatchIdRef.current = navigator.geolocation.watchPosition(
+          (nextPos) => {
+            pushLiveLocation(
+              Number(nextPos.coords.latitude.toFixed(6)),
+              Number(nextPos.coords.longitude.toFixed(6)),
+              true
+            );
+          },
+          () => {
+            setLocationPermission('denied');
+            setIsLocationSharing(false);
+          },
+          {
+            enableHighAccuracy: true,
+            timeout: 10000,
+            maximumAge: 10000,
+          }
+        );
+      },
+      () => {
+        setLocationPermission('denied');
+        setIsLocationSharing(false);
+        toast({
+          title: 'Location Permission Needed',
+          description: 'Allow location access to enable live dispatch tracking.',
+          variant: 'destructive',
+        });
+      },
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  };
+
+  const captureCurrentLocationOnce = () => {
+    if (!navigator.geolocation) return;
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        pushLiveLocation(
+          Number(position.coords.latitude.toFixed(6)),
+          Number(position.coords.longitude.toFixed(6)),
+          false
+        );
+      },
+      () => {
+        toast({
+          title: 'Location Unavailable',
+          description: 'Could not read your current GPS location.',
+          variant: 'destructive',
+        });
+      },
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  };
+
+  useEffect(() => {
+    let shouldAutoStart = true;
+    try {
+      const storedPreference = localStorage.getItem(LOCATION_PREF_KEY);
+      if (storedPreference === 'false') {
+        setWantsLiveLocation(false);
+        shouldAutoStart = false;
+      }
+    } catch {
+      // Ignore storage errors in constrained browser contexts.
+    }
+
+    if (!navigator.geolocation) {
+      setLocationPermission('unsupported');
+      return;
+    }
+
+    if (navigator.permissions?.query) {
+      navigator.permissions
+        .query({ name: 'geolocation' as PermissionName })
+        .then((status) => {
+          if (status.state === 'granted') {
+            setLocationPermission('granted');
+            if (shouldAutoStart) startLiveLocationSharing();
+          } else if (status.state === 'prompt') {
+            setLocationPermission('prompt');
+            if (shouldAutoStart) {
+              // Prompt right away after login because location sharing is critical for dispatch.
+              startLiveLocationSharing();
+            }
+          } else {
+            setLocationPermission('denied');
+          }
+
+          status.onchange = () => {
+            if (status.state === 'granted') {
+              setLocationPermission('granted');
+            } else if (status.state === 'prompt') {
+              setLocationPermission('prompt');
+              stopLiveLocationSharing();
+            } else {
+              setLocationPermission('denied');
+              stopLiveLocationSharing();
+            }
+          };
+        })
+        .catch(() => {
+          setLocationPermission('prompt');
+        });
+    } else {
+      setLocationPermission('prompt');
+      if (shouldAutoStart) {
+        startLiveLocationSharing();
+      }
+    }
+
+    return () => {
+      if (geoWatchIdRef.current != null && navigator.geolocation) {
+        navigator.geolocation.clearWatch(geoWatchIdRef.current);
+        geoWatchIdRef.current = null;
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    const handleFocusResume = () => {
+      if (!wantsLiveLocation || isLocationSharing || locationPermission !== 'granted') return;
+      startLiveLocationSharing();
+    };
+
+    window.addEventListener('focus', handleFocusResume);
+    return () => {
+      window.removeEventListener('focus', handleFocusResume);
+    };
+  }, [wantsLiveLocation, isLocationSharing, locationPermission]);
 
   const handleSendEmergencyAlert = async () => {
     if (!activeRequest) return;
@@ -365,6 +600,13 @@ export default function DriverDashboardPage() {
             <p className="text-sm text-muted-foreground">Manage live ambulance dispatch updates in real time.</p>
           </div>
           <div className="flex flex-wrap gap-2">
+            <Button
+              variant={isLocationSharing ? 'secondary' : 'outline'}
+              onClick={isLocationSharing ? stopLiveLocationSharing : startLiveLocationSharing}
+            >
+              <MapPin className="mr-2 h-4 w-4" />
+              {isLocationSharing ? 'Live Location: On' : 'Enable Live Location'}
+            </Button>
             <Button variant="outline" onClick={() => loadOverview(false)}>
               <RefreshCw className="mr-2 h-4 w-4" /> Refresh
             </Button>
@@ -374,78 +616,47 @@ export default function DriverDashboardPage() {
           </div>
         </div>
 
-        <div className="grid gap-4 md:grid-cols-3">
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="flex items-center gap-2 text-base"><User className="h-4 w-4" /> Driver</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-1 text-sm">
-              <p className="font-semibold">{overview?.driver.name || 'NA'}</p>
-              <p className="text-muted-foreground">Phone: {overview?.driver.phone || 'NA'}</p>
-              <p className="text-muted-foreground">Shift: {overview?.ambulance?.shiftStatus || 'NA'}</p>
-            </CardContent>
-          </Card>
+        {!isLocationSharing && (
+          <Alert variant="destructive">
+            <AlertDescription className="flex flex-wrap items-center justify-between gap-3">
+              <span>
+                Live location is OFF. Dispatch tracking depends on this and should stay ON during duty.
+              </span>
+              <Button size="sm" variant="secondary" onClick={startLiveLocationSharing}>
+                Turn On Live Location
+              </Button>
+            </AlertDescription>
+          </Alert>
+        )}
 
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="flex items-center gap-2 text-base"><Ambulance className="h-4 w-4" /> Ambulance</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2 text-sm">
-              {overview?.ambulance ? (
-                <>
-                  <p className="font-semibold">{overview.ambulance.vehicleCode}</p>
-                  <Badge variant={overview.ambulance.status === 'available' ? 'secondary' : 'default'}>
-                    {overview.ambulance.status}
-                  </Badge>
-                  <div className="flex items-center gap-2 text-muted-foreground">
-                    <Fuel className="h-4 w-4" />
-                    <span>Fuel: {overview.ambulance.fuelLevelPercent}%</span>
-                  </div>
-                  <p className="text-muted-foreground">Lat/Lng: {overview.ambulance.lat}, {overview.ambulance.lng}</p>
-                </>
-              ) : (
-                <p className="text-muted-foreground">No ambulance assigned yet.</p>
-              )}
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="flex items-center gap-2 text-base"><Clock3 className="h-4 w-4" /> Current ETA</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-2xl font-bold">{activeRequest ? `${activeRequest.etaMinutes} min` : 'No active case'}</p>
-              {activeRequest && <p className="mt-1 text-xs text-muted-foreground">Status: {activeRequest.status}</p>}
-            </CardContent>
-          </Card>
-        </div>
-
-        <div className="grid gap-4 md:grid-cols-3">
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-base">Completed Today</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-2xl font-bold">{overview?.performance.completedCasesToday ?? 0}</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-base">Active Cases</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-2xl font-bold">{overview?.performance.activeCases ?? 0}</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-base">Emergency Alerts Sent</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-2xl font-bold text-red-600">{overview?.performance.emergencyAlertsSentToday ?? 0}</p>
-            </CardContent>
-          </Card>
-        </div>
+        <Card className="border-secondary/20">
+          <CardContent className="pt-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div className="space-y-1">
+              <p className="text-sm font-semibold">Current Location Sharing Status</p>
+              <p className="text-xs text-muted-foreground">
+                {locationPermission === 'granted'
+                  ? isLocationSharing
+                    ? `Live sharing active${lastLocationSync ? ` • Last sync ${new Date(lastLocationSync).toLocaleTimeString()}` : ''}`
+                    : 'Permission granted, sharing paused.'
+                  : locationPermission === 'prompt'
+                    ? 'Allow location once to start automatic live tracking.'
+                    : locationPermission === 'denied'
+                      ? 'Location blocked. Enable permission in browser settings.'
+                      : locationPermission === 'unsupported'
+                        ? 'Location is not supported on this device/browser.'
+                        : 'Checking location permission...'}
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Badge variant={isLocationSharing ? 'secondary' : 'outline'}>
+                {isLocationSharing ? 'Tracking Active' : 'Tracking Inactive'}
+              </Badge>
+              <Button variant="outline" size="sm" onClick={captureCurrentLocationOnce} disabled={isUpdatingLocation}>
+                {isUpdatingLocation ? 'Syncing...' : 'Sync Current Location'}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
 
         <div className="grid gap-4 lg:grid-cols-3">
           <Card className="lg:col-span-2">
@@ -574,13 +785,103 @@ export default function DriverDashboardPage() {
           </Card>
         </div>
 
+        <div className="grid gap-4 md:grid-cols-3">
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-base"><User className="h-4 w-4" /> Driver</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-1 text-sm">
+              <p className="font-semibold">{overview?.driver.name || 'NA'}</p>
+              <p className="text-muted-foreground">Phone: {overview?.driver.phone || 'NA'}</p>
+              <p className="text-muted-foreground">Shift: {overview?.ambulance?.shiftStatus || 'NA'}</p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-base"><Ambulance className="h-4 w-4" /> Ambulance</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2 text-sm">
+              {overview?.ambulance ? (
+                <>
+                  <p className="font-semibold">{overview.ambulance.vehicleCode}</p>
+                  <Badge variant={overview.ambulance.status === 'available' ? 'secondary' : 'default'}>
+                    {overview.ambulance.status}
+                  </Badge>
+                  <div className="flex items-center gap-2 text-muted-foreground">
+                    <Fuel className="h-4 w-4" />
+                    <span>Fuel: {overview.ambulance.fuelLevelPercent}%</span>
+                  </div>
+                  <p className="text-muted-foreground">Lat/Lng: {overview.ambulance.lat}, {overview.ambulance.lng}</p>
+                </>
+              ) : (
+                <p className="text-muted-foreground">No ambulance assigned yet.</p>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-base"><Clock3 className="h-4 w-4" /> Current ETA</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-2xl font-bold">{activeRequest ? `${activeRequest.etaMinutes} min` : 'No active case'}</p>
+              {activeRequest && <p className="mt-1 text-xs text-muted-foreground">Status: {activeRequest.status}</p>}
+            </CardContent>
+          </Card>
+        </div>
+
+        <div className="grid gap-4 md:grid-cols-3">
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base">Completed Today</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-2xl font-bold">{overview?.performance.completedCasesToday ?? 0}</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base">Active Cases</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-2xl font-bold">{overview?.performance.activeCases ?? 0}</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base">Emergency Alerts Sent</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-2xl font-bold text-red-600">{overview?.performance.emergencyAlertsSentToday ?? 0}</p>
+            </CardContent>
+          </Card>
+        </div>
+
         <div className="grid gap-4 lg:grid-cols-2">
           <Card>
             <CardHeader>
               <CardTitle>Edit Driver & Ambulance Details</CardTitle>
-              <CardDescription>Update operational readiness and live field details for dispatch accuracy.</CardDescription>
+              <CardDescription>
+                Quick operations first. Use advanced edit only when needed.
+              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
+              <div className="flex flex-wrap gap-2">
+                <Button variant={showAdvancedEdit ? 'secondary' : 'outline'} onClick={() => setShowAdvancedEdit((prev) => !prev)}>
+                  {showAdvancedEdit ? 'Hide Advanced Edit' : 'Open Advanced Edit'}
+                </Button>
+                <Button variant="outline" onClick={captureCurrentLocationOnce} disabled={isUpdatingLocation}>
+                  {isUpdatingLocation ? 'Syncing GPS...' : 'Use Current GPS'}
+                </Button>
+              </div>
+
+              {!showAdvancedEdit ? (
+                <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
+                  Most drivers should use live location + quick status buttons above. Open advanced edit only for exceptional updates.
+                </div>
+              ) : (
+                <>
               <div className="grid gap-3 md:grid-cols-2">
                 <div className="space-y-2">
                   <Label htmlFor="driver-name">Driver Name</Label>
@@ -596,25 +897,6 @@ export default function DriverDashboardPage() {
                     id="driver-phone"
                     value={profileForm.phone}
                     onChange={(e) => handleProfileFieldChange('phone', e.target.value)}
-                  />
-                </div>
-              </div>
-
-              <div className="grid gap-3 md:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="driver-lat">Current Latitude</Label>
-                  <Input
-                    id="driver-lat"
-                    value={profileForm.lat}
-                    onChange={(e) => handleProfileFieldChange('lat', e.target.value)}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="driver-lng">Current Longitude</Label>
-                  <Input
-                    id="driver-lng"
-                    value={profileForm.lng}
-                    onChange={(e) => handleProfileFieldChange('lng', e.target.value)}
                   />
                 </div>
               </div>
@@ -712,6 +994,8 @@ export default function DriverDashboardPage() {
                   Reset
                 </Button>
               </div>
+                </>
+              )}
             </CardContent>
           </Card>
 
@@ -737,6 +1021,25 @@ export default function DriverDashboardPage() {
               ) : (
                 <p className="text-sm text-muted-foreground">No emergency alerts sent yet for active assignments.</p>
               )}
+
+              <div className="pt-2">
+                <p className="text-sm font-semibold text-secondary">Hospital Confirmations</p>
+                <div className="mt-2 space-y-2">
+                  {overview?.hospitalAcknowledgements.length ? (
+                    overview.hospitalAcknowledgements.map((ack, index) => (
+                      <div key={`${ack.requestId}-${index}`} className="rounded-md border border-secondary/20 bg-secondary/5 p-3">
+                        <p className="text-xs text-muted-foreground">
+                          Case #{ack.requestId} - {new Date(ack.time).toLocaleString()}
+                        </p>
+                        <p className="text-sm font-semibold">{ack.patientName}</p>
+                        <p className="text-sm">{ack.message}</p>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="text-sm text-muted-foreground">No hospital acknowledgement received yet.</p>
+                  )}
+                </div>
+              </div>
             </CardContent>
           </Card>
         </div>

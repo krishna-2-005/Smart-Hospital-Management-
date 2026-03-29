@@ -2,9 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { acknowledgeHospitalEmergencyAlert, getHospitalEmergencyInbox } from '@/lib/demo-store';
 
-export async function GET(request: NextRequest) {
+export async function GET() {
   const user = await getCurrentUser();
-  if (!user || user.role !== 'admin') {
+  if (!user || user.role !== 'reception') {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
@@ -18,7 +18,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   const user = await getCurrentUser();
-  if (!user || user.role !== 'admin') {
+  if (!user || user.role !== 'reception') {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 

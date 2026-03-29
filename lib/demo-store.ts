@@ -2024,6 +2024,10 @@ export function getSmartEmergencyAdminOverview() {
     requests: active.map((request) => {
       const ambulance = store.ambulances.find((item) => item.id === request.assignedAmbulanceId);
       const hospital = store.hospitals.find((item) => item.id === request.selectedHospitalId);
+      const latestAlert = request.notifications[request.notifications.length - 1] || null;
+      const latestEmergencyAlert = [...request.notifications]
+        .reverse()
+        .find((note) => note.target === 'hospital' && note.priority === 'emergency') || null;
       return {
         id: request.id,
         patientName: request.patientName,
@@ -2047,7 +2051,16 @@ export function getSmartEmergencyAdminOverview() {
               requiredBedType: request.requiredBedType,
             }
           : null,
-        latestAlert: request.notifications[request.notifications.length - 1] || null,
+        latestAlert,
+        latestEmergencyAlert: latestEmergencyAlert
+          ? {
+              id: latestEmergencyAlert.id || null,
+              message: latestEmergencyAlert.message,
+              time: latestEmergencyAlert.time,
+              acknowledgedAt: latestEmergencyAlert.acknowledgedAt || null,
+              category: latestEmergencyAlert.category || 'critical-update',
+            }
+          : null,
       };
     }),
     ambulances: store.ambulances.map((item) => ({
@@ -2059,6 +2072,135 @@ export function getSmartEmergencyAdminOverview() {
       lng: Number(item.lng.toFixed(5)),
       currentRequestId: item.currentRequestId,
     })),
+  };
+}
+
+export function getHospitalEmergencyInbox(userId: number) {
+  const store = getStore();
+  const user = store.users.find((item) => item.id === userId);
+  if (!user || !['admin', 'doctor', 'reception'].includes(user.role)) return null;
+
+  const overview = getSmartEmergencyAdminOverview();
+
+  const pending = store.smartEmergencies
+    .filter((request) => request.status !== 'arrived')
+    .map((request) => {
+      const latestEmergencyAlert = [...request.notifications]
+        .reverse()
+        .find((note) => note.target === 'hospital' && note.priority === 'emergency') || null;
+
+      const unacknowledgedCount = request.notifications.filter(
+        (note) => note.target === 'hospital' && note.priority === 'emergency' && !note.acknowledgedAt
+      ).length;
+
+      return {
+        requestId: request.id,
+        patientName: request.patientName,
+        status: request.status,
+        etaMinutes: request.currentEtaMinutes,
+        unacknowledgedCount,
+        latestEmergencyAlert: latestEmergencyAlert
+          ? {
+              id: latestEmergencyAlert.id || null,
+              message: latestEmergencyAlert.message,
+              time: latestEmergencyAlert.time,
+              category: latestEmergencyAlert.category || 'critical-update',
+              acknowledgedAt: latestEmergencyAlert.acknowledgedAt || null,
+            }
+          : null,
+      };
+    })
+    .filter((item) => item.latestEmergencyAlert)
+    .sort((first, second) => {
+      if ((second.unacknowledgedCount || 0) !== (first.unacknowledgedCount || 0)) {
+        return (second.unacknowledgedCount || 0) - (first.unacknowledgedCount || 0);
+      }
+      const firstTime = first.latestEmergencyAlert ? new Date(first.latestEmergencyAlert.time).getTime() : 0;
+      const secondTime = second.latestEmergencyAlert ? new Date(second.latestEmergencyAlert.time).getTime() : 0;
+      return secondTime - firstTime;
+    });
+
+  return {
+    role: user.role,
+    overview,
+    pending,
+    pendingEmergencyAlerts: pending.reduce((sum, item) => sum + item.unacknowledgedCount, 0),
+  };
+}
+
+export function acknowledgeHospitalEmergencyAlert(
+  userId: number,
+  input: {
+    requestId: number;
+    alertId?: number;
+    note?: string;
+  }
+) {
+  const store = getStore();
+  const user = store.users.find((item) => item.id === userId);
+  if (!user || !['admin', 'doctor', 'reception'].includes(user.role)) {
+    return { ok: false, error: 'Hospital team account not found' as const };
+  }
+
+  const request = store.smartEmergencies.find((item) => item.id === input.requestId);
+  if (!request) {
+    return { ok: false, error: 'Emergency request not found' as const };
+  }
+
+  const targetAlert =
+    (typeof input.alertId === 'number'
+      ? request.notifications.find(
+          (note) => note.id === input.alertId && note.target === 'hospital' && note.priority === 'emergency'
+        )
+      : [...request.notifications]
+          .reverse()
+          .find((note) => note.target === 'hospital' && note.priority === 'emergency' && !note.acknowledgedAt)) || null;
+
+  if (!targetAlert) {
+    return { ok: false, error: 'No pending emergency alert found for this request' as const };
+  }
+
+  if (targetAlert.acknowledgedAt) {
+    return { ok: false, error: 'Emergency alert is already acknowledged' as const };
+  }
+
+  const now = new Date().toISOString();
+  targetAlert.acknowledgedAt = now;
+
+  const actorName = `${user.firstName} ${user.lastName}`.trim();
+  const ackMessage =
+    input.note?.trim() ||
+    `Hospital acknowledged emergency alert and initiated pre-arrival protocol (${actorName}, ${user.role}).`;
+
+  appendEmergencyNotification(request, 'ambulance', ackMessage, {
+    priority: 'normal',
+    category: 'hospital-ack',
+    senderRole: user.role,
+    notificationId: store.counters.notificationId++,
+  });
+
+  appendEmergencyNotification(request, 'patient', 'Hospital team confirmed emergency alert and is prepared.', {
+    priority: 'normal',
+    category: 'hospital-ack',
+    senderRole: user.role,
+    notificationId: store.counters.notificationId++,
+  });
+
+  request.updatedAt = now;
+
+  return {
+    ok: true,
+    data: {
+      requestId: request.id,
+      alertId: targetAlert.id || null,
+      acknowledgedAt: now,
+      acknowledgedBy: {
+        userId: user.id,
+        name: actorName,
+        role: user.role,
+      },
+      status: getSmartEmergencyStatusById(request.id),
+    },
   };
 }
 
@@ -2090,6 +2232,7 @@ export function getDriverEmergencyOverview(userId: number) {
       activeRequest: null,
       recentUpdates: [],
       emergencyAlerts: [],
+      hospitalAcknowledgements: [],
       performance: {
         completedCasesToday: 0,
         activeCases: 0,
@@ -2132,6 +2275,22 @@ export function getDriverEmergencyOverview(userId: number) {
           time: note.time,
           category: note.category || 'critical-update',
           target: note.target,
+        }))
+    )
+    .sort((first, second) => (first.time > second.time ? -1 : 1))
+    .slice(0, 6);
+
+  const hospitalAcknowledgements = store.smartEmergencies
+    .filter((request) => request.assignedAmbulanceId === ambulance.id)
+    .flatMap((request) =>
+      request.notifications
+        .filter((note) => note.target === 'ambulance' && note.category === 'hospital-ack')
+        .map((note) => ({
+          requestId: request.id,
+          patientName: request.patientName,
+          message: note.message,
+          time: note.time,
+          senderRole: note.senderRole || 'hospital',
         }))
     )
     .sort((first, second) => (first.time > second.time ? -1 : 1))
@@ -2197,6 +2356,7 @@ export function getDriverEmergencyOverview(userId: number) {
     activeRequest,
     recentUpdates,
     emergencyAlerts,
+    hospitalAcknowledgements,
     performance: {
       completedCasesToday,
       activeCases: currentRequest ? 1 : 0,

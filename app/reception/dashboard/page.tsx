@@ -5,7 +5,7 @@ import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Heart, LogOut, Users, Clock, AlertTriangle, CheckCircle, TrendingUp, ClipboardList, UserRoundCheck } from 'lucide-react';
+import { Heart, LogOut, Users, Clock, AlertTriangle, CheckCircle, TrendingUp, ClipboardList, UserRoundCheck, ShieldAlert } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
 import { AddPatientForm } from '@/components/reception/add-patient-form';
 
@@ -23,6 +23,14 @@ export default function ReceptionDashboard() {
   const [stats, setStats] = useState<QueueStats | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
+  const [pendingEmergencyAlerts, setPendingEmergencyAlerts] = useState(0);
+  const [latestEmergency, setLatestEmergency] = useState<{
+    requestId: number;
+    message: string;
+    category: string;
+    alertId: number | null;
+  } | null>(null);
+  const [isAckingEmergency, setIsAckingEmergency] = useState(false);
 
   useEffect(() => {
     const fetchStats = async () => {
@@ -56,6 +64,56 @@ export default function ReceptionDashboard() {
     const interval = setInterval(fetchStats, 15000); // Refresh every 15 seconds
     return () => clearInterval(interval);
   }, []);
+
+  useEffect(() => {
+    const loadEmergencyInbox = async () => {
+      try {
+        const res = await fetch('/api/reception/emergency-response', { credentials: 'include' });
+        if (!res.ok) return;
+        const data = await res.json();
+        setPendingEmergencyAlerts(Number(data.pendingEmergencyAlerts || 0));
+        const firstPending = (data.pending || []).find((item: any) => item.unacknowledgedCount > 0 && item.latestEmergencyAlert);
+        if (firstPending?.latestEmergencyAlert) {
+          setLatestEmergency({
+            requestId: firstPending.requestId,
+            message: firstPending.latestEmergencyAlert.message,
+            category: firstPending.latestEmergencyAlert.category,
+            alertId: firstPending.latestEmergencyAlert.id ?? null,
+          });
+        } else {
+          setLatestEmergency(null);
+        }
+      } catch (error) {
+        console.error('Failed to load reception emergency inbox', error);
+      }
+    };
+
+    loadEmergencyInbox();
+    const interval = setInterval(loadEmergencyInbox, 7000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const acknowledgeEmergencyAlert = async () => {
+    if (!latestEmergency) return;
+    setIsAckingEmergency(true);
+    try {
+      await fetch('/api/reception/emergency-response', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          requestId: latestEmergency.requestId,
+          alertId: latestEmergency.alertId || undefined,
+        }),
+      });
+      setLatestEmergency(null);
+      setPendingEmergencyAlerts((prev) => Math.max(0, prev - 1));
+    } catch (error) {
+      console.error('Failed to acknowledge emergency alert', error);
+    } finally {
+      setIsAckingEmergency(false);
+    }
+  };
 
   const formattedLastRefresh = lastRefresh
     ? lastRefresh.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true })
@@ -163,6 +221,38 @@ export default function ReceptionDashboard() {
         </div>
 
         {/* Quick Actions and Operations */}
+        <Card className="border-destructive/20 bg-destructive/5 mb-6">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <ShieldAlert className="w-5 h-5 text-destructive" />
+              Emergency Coordination
+            </CardTitle>
+            <CardDescription>
+              Pending hospital acknowledgements: {pendingEmergencyAlerts}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3 text-sm">
+            {latestEmergency ? (
+              <>
+                <div className="rounded-md border border-destructive/30 bg-background p-3">
+                  <p className="text-xs uppercase text-muted-foreground">{latestEmergency.category.replace(/-/g, ' ')}</p>
+                  <p className="mt-1">{latestEmergency.message}</p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button variant="destructive" onClick={acknowledgeEmergencyAlert} disabled={isAckingEmergency}>
+                    {isAckingEmergency ? 'Acknowledging...' : 'Acknowledge Emergency Alert'}
+                  </Button>
+                  <Button variant="outline" onClick={() => router.push('/reception/emergency-response')}>
+                    Open Command Center
+                  </Button>
+                </div>
+              </>
+            ) : (
+              <p className="text-muted-foreground">No pending emergency acknowledgements for reception team.</p>
+            )}
+          </CardContent>
+        </Card>
+
         <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
           {/* Queue Management */}
           <Card className="border-secondary/20 md:col-span-2">

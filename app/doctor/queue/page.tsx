@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Empty } from '@/components/ui/empty';
-import { Heart, Users, LogOut, Stethoscope, AlertTriangle, ChevronDown, FileText, UserCheck } from 'lucide-react';
+import { Heart, Users, LogOut, Stethoscope, AlertTriangle, ChevronDown, FileText, UserCheck, ShieldAlert } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -38,6 +38,14 @@ export default function DoctorQueuePage() {
   const [isLoading, setIsLoading] = useState(true);
   const [expandedPatient, setExpandedPatient] = useState<number | null>(null);
   const [patientDetails, setPatientDetails] = useState<Record<number, PatientDetails>>({});
+  const [pendingEmergencyAlerts, setPendingEmergencyAlerts] = useState(0);
+  const [latestEmergency, setLatestEmergency] = useState<{
+    requestId: number;
+    message: string;
+    category: string;
+    alertId: number | null;
+  } | null>(null);
+  const [isAckingEmergency, setIsAckingEmergency] = useState(false);
   const router = useRouter();
 
   // Mock patient health data - in production, this would come from the API
@@ -78,6 +86,56 @@ export default function DoctorQueuePage() {
     const interval = setInterval(fetchQueue, 10000);
     return () => clearInterval(interval);
   }, []);
+
+  useEffect(() => {
+    const loadEmergencyInbox = async () => {
+      try {
+        const res = await fetch('/api/doctor/emergency-response', { credentials: 'include' });
+        if (!res.ok) return;
+        const data = await res.json();
+        setPendingEmergencyAlerts(Number(data.pendingEmergencyAlerts || 0));
+        const firstPending = (data.pending || []).find((item: any) => item.unacknowledgedCount > 0 && item.latestEmergencyAlert);
+        if (firstPending?.latestEmergencyAlert) {
+          setLatestEmergency({
+            requestId: firstPending.requestId,
+            message: firstPending.latestEmergencyAlert.message,
+            category: firstPending.latestEmergencyAlert.category,
+            alertId: firstPending.latestEmergencyAlert.id ?? null,
+          });
+        } else {
+          setLatestEmergency(null);
+        }
+      } catch (error) {
+        console.error('Failed to load doctor emergency inbox', error);
+      }
+    };
+
+    loadEmergencyInbox();
+    const interval = setInterval(loadEmergencyInbox, 6000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const acknowledgeEmergencyAlert = async () => {
+    if (!latestEmergency) return;
+    setIsAckingEmergency(true);
+    try {
+      await fetch('/api/doctor/emergency-response', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          requestId: latestEmergency.requestId,
+          alertId: latestEmergency.alertId || undefined,
+        }),
+      });
+      setLatestEmergency(null);
+      setPendingEmergencyAlerts((prev) => Math.max(0, prev - 1));
+    } catch (error) {
+      console.error('Failed to acknowledge emergency alert', error);
+    } finally {
+      setIsAckingEmergency(false);
+    }
+  };
 
   const handleLogout = async () => {
     await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
@@ -236,6 +294,38 @@ export default function DoctorQueuePage() {
             </CardContent>
           </Card>
         </div>
+
+        <Card className="border-destructive/20 bg-destructive/5 mb-8">
+          <CardHeader>
+            <CardTitle className="text-lg flex items-center gap-2">
+              <ShieldAlert className="w-5 h-5 text-destructive" />
+              Emergency Coordination Link
+            </CardTitle>
+            <CardDescription>
+              Pending hospital acknowledgements: {pendingEmergencyAlerts}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3 text-sm">
+            {latestEmergency ? (
+              <>
+                <div className="rounded-md border border-destructive/30 bg-background p-3">
+                  <p className="text-xs uppercase text-muted-foreground">{latestEmergency.category.replace(/-/g, ' ')}</p>
+                  <p className="mt-1">{latestEmergency.message}</p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button variant="destructive" onClick={acknowledgeEmergencyAlert} disabled={isAckingEmergency}>
+                    {isAckingEmergency ? 'Acknowledging...' : 'Acknowledge Emergency Alert'}
+                  </Button>
+                  <Button variant="outline" onClick={() => router.push('/doctor/emergency-response')}>
+                    Open Command Center
+                  </Button>
+                </div>
+              </>
+            ) : (
+              <p className="text-muted-foreground">No pending emergency alert acknowledgement for hospital team.</p>
+            )}
+          </CardContent>
+        </Card>
 
         {/* Queue List */}
         <Card className="border-secondary/20">
