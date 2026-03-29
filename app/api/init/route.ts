@@ -16,7 +16,8 @@ export async function GET(request: NextRequest) {
         await query(`
           CREATE TABLE IF NOT EXISTS users (
             id SERIAL PRIMARY KEY,
-            email VARCHAR(255) UNIQUE NOT NULL,
+            staff_id VARCHAR(8) UNIQUE,
+            email VARCHAR(255) UNIQUE,
             password_hash VARCHAR(255) NOT NULL,
             first_name VARCHAR(100) NOT NULL,
             last_name VARCHAR(100) NOT NULL,
@@ -161,72 +162,27 @@ export async function GET(request: NextRequest) {
     const usersCount = await query('SELECT COUNT(*) as count FROM users');
     if (parseInt(usersCount.rows[0].count) === 0) {
       const demoUsers = [
-        {
-          email: 'admin@hospital.com',
-          password: 'admin123',
-          firstName: 'System',
-          lastName: 'Admin',
-          role: 'admin',
-        },
-        {
-          email: 'doctor@hospital.com',
-          password: 'doctor123',
-          firstName: 'Sarah',
-          lastName: 'Wilson',
-          role: 'doctor',
-        },
-        {
-          email: 'reception@hospital.com',
-          password: 'reception123',
-          firstName: 'Emma',
-          lastName: 'Davis',
-          role: 'reception',
-        },
-        {
-          email: 'patient@hospital.com',
-          password: 'patient123',
-          firstName: 'John',
-          lastName: 'Doe',
-          role: 'patient',
-        },
+        { staffId: 'A1000001', email: 'admin@staff.local',     password: '123456', firstName: 'System', lastName: 'Admin',  role: 'admin' },
+        { staffId: 'D1000002', email: 'doctor@staff.local',    password: '123456', firstName: 'Sarah',  lastName: 'Wilson', role: 'doctor' },
+        { staffId: 'R1000003', email: 'reception@staff.local', password: '123456', firstName: 'Emma',   lastName: 'Davis',  role: 'reception' },
+        { staffId: 'E1000004', email: 'driver@staff.local',    password: '123456', firstName: 'Rahul',  lastName: 'Singh',  role: 'driver' },
       ];
 
       for (const demoUser of demoUsers) {
         const passwordHash = await hashPassword(demoUser.password);
         const userInsertResult = await query(
-          `
-            INSERT INTO users (email, password_hash, first_name, last_name, role, is_active)
-            VALUES ($1, $2, $3, $4, $5, true)
-            RETURNING id, role
-          `,
-          [
-            demoUser.email,
-            passwordHash,
-            demoUser.firstName,
-            demoUser.lastName,
-            demoUser.role,
-          ]
+          `INSERT INTO users (staff_id, email, password_hash, first_name, last_name, role, is_active, must_change_password)
+           VALUES ($1, $2, $3, $4, $5, $6, true, false)
+           RETURNING id, role`,
+          [demoUser.staffId, demoUser.email, passwordHash, demoUser.firstName, demoUser.lastName, demoUser.role]
         );
 
         const createdUser = userInsertResult.rows[0];
 
         if (createdUser.role === 'doctor') {
           await query(
-            `
-              INSERT INTO doctors (user_id, specialization, license_number, is_available)
-              VALUES ($1, $2, $3, true)
-            `,
+            `INSERT INTO doctors (user_id, specialization, license_number, is_available) VALUES ($1, $2, $3, true)`,
             [createdUser.id, 'General Medicine', 'DOC-001']
-          );
-        }
-
-        if (createdUser.role === 'patient') {
-          await query(
-            `
-              INSERT INTO patients (user_id, patient_id, blood_type)
-              VALUES ($1, $2, $3)
-            `,
-            [createdUser.id, `PAT-${createdUser.id}`, 'O+']
           );
         }
       }

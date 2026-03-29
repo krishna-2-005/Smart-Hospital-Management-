@@ -189,19 +189,9 @@ export default function DoctorQueuePage() {
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
-      <header className="border-b border-secondary/10 sticky top-0 bg-background/95 z-50">
-        <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Heart className="w-6 h-6 text-primary" />
-            <div>
-              <h1 className="text-xl font-bold text-primary">Doctor Queue</h1>
-              <p className="text-xs text-muted-foreground">Patient consultation management</p>
-            </div>
-          </div>
-          <Button variant="outline" size="sm" onClick={handleLogout}>
-            <LogOut className="w-4 h-4 mr-2" />
-            Logout
-          </Button>
+      <header className="border-b border-secondary/10 sticky top-0 bg-background/95 z-10">
+        <div className="max-w-7xl mx-auto px-4 py-4">
+          <h1 className="text-xl font-bold text-primary">Doctor Queue</h1>
         </div>
       </header>
 

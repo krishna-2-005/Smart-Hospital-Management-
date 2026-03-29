@@ -2,12 +2,14 @@ type Role = 'admin' | 'doctor' | 'reception' | 'driver' | 'patient';
 
 type DemoUser = {
   id: number;
+  staffId?: string; // role-prefixed ID for staff (non-patient) users
   email: string;
   password: string;
   firstName: string;
   lastName: string;
   role: Role;
   isActive: boolean;
+  mustChangePassword?: boolean;
   phone?: string;
 };
 
@@ -284,42 +286,50 @@ function seedStore(): DemoStore {
     users: [
       {
         id: 1,
-        email: 'admin@hospital.com',
-        password: 'admin123',
+        staffId: 'A1000001',
+        email: 'admin@staff.local',
+        password: '123456',
         firstName: 'System',
         lastName: 'Admin',
         role: 'admin',
         isActive: true,
+        mustChangePassword: false,
         phone: '9000000001',
       },
       {
         id: 2,
-        email: 'doctor@hospital.com',
-        password: 'doctor123',
+        staffId: 'D1000002',
+        email: 'doctor@staff.local',
+        password: '123456',
         firstName: 'Sarah',
         lastName: 'Wilson',
         role: 'doctor',
         isActive: true,
+        mustChangePassword: false,
         phone: '9000000002',
       },
       {
         id: 3,
-        email: 'reception@hospital.com',
-        password: 'reception123',
+        staffId: 'R1000003',
+        email: 'reception@staff.local',
+        password: '123456',
         firstName: 'Emma',
         lastName: 'Davis',
         role: 'reception',
         isActive: true,
+        mustChangePassword: false,
         phone: '9000000003',
       },
       {
         id: 4,
-        email: 'driver@hospital.com',
-        password: 'driver123',
+        staffId: 'E1000004',
+        email: 'driver@staff.local',
+        password: '123456',
         firstName: 'Rahul',
         lastName: 'Singh',
         role: 'driver',
         isActive: true,
+        mustChangePassword: false,
         phone: '9000011111',
       },
       {
@@ -780,6 +790,116 @@ export function validateDemoCredentials(email: string, password: string) {
     return null;
   }
   return user;
+}
+
+// Staff login via role-prefixed staffId
+export function validateDemoStaffCredentials(staffId: string, password: string) {
+  const store = getStore();
+  const user = store.users.find(
+    (u) => u.staffId === staffId && u.role !== 'patient' && u.isActive
+  );
+  if (!user || user.password !== password) return null;
+  return user;
+}
+
+const DEMO_ROLE_PREFIX: Record<string, string> = {
+  admin: 'A', doctor: 'D', reception: 'R', driver: 'E', patient: 'P',
+};
+
+function generateDemoStaffId(store: DemoStore, role: string): string {
+  const prefix = DEMO_ROLE_PREFIX[role] || 'S';
+  for (let i = 0; i < 20; i++) {
+    const candidate = `${prefix}${String(Math.floor(1000000 + Math.random() * 9000000))}`;
+    if (!store.users.find((u) => u.staffId === candidate)) return candidate;
+  }
+  return '';
+}
+
+export function createStaffUser(input: {
+  firstName: string;
+  lastName: string;
+  email?: string;
+  phone?: string;
+  role: string;
+  specialization?: string;
+}) {
+  const store = getStore();
+  const role = input.role as Role;
+  if (!['admin', 'doctor', 'reception', 'driver'].includes(role)) return null;
+
+  const staffId = generateDemoStaffId(store, role);
+  if (!staffId) return null;
+
+  const user: DemoUser = {
+    id: store.counters.userId++,
+    staffId,
+    email: input.email || `${staffId.toLowerCase()}@staff.local`,
+    password: '123456',
+    firstName: input.firstName,
+    lastName: input.lastName,
+    role,
+    isActive: true,
+    mustChangePassword: true,
+    phone: input.phone,
+  };
+  store.users.push(user);
+
+  if (role === 'doctor') {
+    store.doctors.push({
+      id: store.counters.doctorId++,
+      userId: user.id,
+      specialization: input.specialization || 'General Medicine',
+      licenseNumber: `DOC-${user.id}`,
+      isAvailable: true,
+    });
+  }
+
+  return user;
+}
+
+export function getStaffUsers() {
+  const store = getStore();
+  return store.users
+    .filter((u) => u.role !== 'patient')
+    .map((u) => ({
+      id: u.id,
+      staffId: u.staffId || '',
+      firstName: u.firstName,
+      lastName: u.lastName,
+      email: u.email,
+      role: u.role,
+      isActive: u.isActive,
+      mustChangePassword: u.mustChangePassword ?? false,
+    }));
+}
+
+export function toggleStaffActive(userId: number, isActive: boolean) {
+  const store = getStore();
+  const user = store.users.find((u) => u.id === userId && u.role !== 'patient');
+  if (user) user.isActive = isActive;
+}
+
+export function updateStaffUser(userId: number, data: { firstName?: string; lastName?: string; email?: string; specialization?: string }) {
+  const store = getStore();
+  const user = store.users.find((u) => u.id === userId && u.role !== 'patient');
+  if (!user) return false;
+  if (data.firstName) user.firstName = data.firstName;
+  if (data.lastName) user.lastName = data.lastName;
+  if (data.email) user.email = data.email;
+  if (data.specialization && user.role === 'doctor') {
+    const doctor = store.doctors.find((d) => d.userId === userId);
+    if (doctor) doctor.specialization = data.specialization;
+  }
+  return true;
+}
+
+export function changeStaffPassword(userId: number, newPassword: string) {
+  const store = getStore();
+  const user = store.users.find((u) => u.id === userId);
+  if (!user) return false;
+  user.password = newPassword;
+  user.mustChangePassword = false;
+  return true;
 }
 
 export function registerDemoUser(input: {

@@ -74,34 +74,9 @@ export default function ReceptionQueuePage() {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
-      <header className="border-b border-secondary/10 sticky top-0 bg-background/95 z-50">
-        <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Heart className="w-6 h-6 text-primary" />
-            <h1 className="text-xl font-bold text-primary">HealthHub - Reception</h1>
-          </div>
-          <div className="flex gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => router.push('/reception/patients')}
-            >
-              Patient Records
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => router.push('/reception/dashboard')}
-            >
-              <BarChart3 className="w-4 h-4 mr-2" />
-              Dashboard
-            </Button>
-            <Button variant="outline" size="sm" onClick={handleLogout}>
-              <LogOut className="w-4 h-4 mr-2" />
-              Logout
-            </Button>
-          </div>
+      <header className="border-b border-secondary/10 sticky top-0 bg-background/95 z-10">
+        <div className="max-w-7xl mx-auto px-4 py-4">
+          <h1 className="text-xl font-bold text-primary">Queue</h1>
         </div>
       </header>
 

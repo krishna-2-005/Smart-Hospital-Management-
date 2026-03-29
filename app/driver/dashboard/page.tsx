@@ -610,9 +610,6 @@ export default function DriverDashboardPage() {
             <Button variant="outline" onClick={() => loadOverview(false)}>
               <RefreshCw className="mr-2 h-4 w-4" /> Refresh
             </Button>
-            <Button variant="destructive" onClick={handleLogout}>
-              <LogOut className="mr-2 h-4 w-4" /> Logout
-            </Button>
           </div>
         </div>
 

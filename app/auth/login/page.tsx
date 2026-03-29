@@ -7,11 +7,11 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
-import { Heart, AlertCircle } from 'lucide-react';
+import { Heart, AlertCircle, ShieldCheck } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 
 export default function LoginPage() {
-  const [email, setEmail] = useState('');
+  const [staffId, setStaffId] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
@@ -27,7 +27,7 @@ export default function LoginPage() {
       const response = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ staffId, password }),
       });
 
       if (!response.ok) {
@@ -36,29 +36,24 @@ export default function LoginPage() {
       }
 
       const data = await response.json();
-      toast({
-        title: 'Success',
-        description: 'Logged in successfully',
-      });
+      toast({ title: 'Welcome back', description: 'Logged in successfully' });
 
-      // Redirect based on role
+      // Force password change on first login
+      if (data.user.mustChangePassword) {
+        router.push('/auth/change-password');
+        return;
+      }
+
       const roleRedirects: Record<string, string> = {
         admin: '/admin/dashboard',
         doctor: '/doctor/queue',
         reception: '/reception/dashboard',
         driver: '/driver/dashboard',
-        patient: '/patient/dashboard',
       };
 
-      const redirectUrl = roleRedirects[data.user.role] || '/';
-      router.push(redirectUrl);
+      router.push(roleRedirects[data.user.role] || '/');
     } catch (err: any) {
       setError(err.message);
-      toast({
-        title: 'Error',
-        description: err.message,
-        variant: 'destructive',
-      });
     } finally {
       setIsLoading(false);
     }
@@ -67,23 +62,24 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background to-secondary/10 p-4">
       <div className="w-full max-w-md">
-        {/* Header */}
         <div className="mb-8 text-center">
           <div className="flex items-center justify-center gap-2 mb-4">
             <Heart className="w-8 h-8 text-primary" />
             <h1 className="text-2xl font-bold text-primary">HealthHub</h1>
           </div>
-          <p className="text-muted-foreground">Smart Hospital Management System</p>
+          <p className="text-muted-foreground">Hospital Staff Portal</p>
         </div>
 
-        {/* Login Card */}
         <Card className="border-primary/10">
           <CardHeader>
-            <CardTitle>Welcome Back</CardTitle>
-            <CardDescription>Sign in to your account to continue</CardDescription>
+            <CardTitle className="flex items-center gap-2">
+              <ShieldCheck className="w-5 h-5 text-secondary" />
+              Staff Login
+            </CardTitle>
+            <CardDescription>Use your 8-digit Staff ID issued by the hospital admin</CardDescription>
           </CardHeader>
           <CardContent>
-            <form onSubmit={handleLogin} className="space-y-6">
+            <form onSubmit={handleLogin} className="space-y-5">
               {error && (
                 <Alert variant="destructive">
                   <AlertCircle className="h-4 w-4" />
@@ -92,19 +88,21 @@ export default function LoginPage() {
               )}
 
               <div className="space-y-2">
-                <label htmlFor="email" className="text-sm font-medium text-foreground">
-                  Email Address
+                <label htmlFor="staffId" className="text-sm font-medium text-foreground">
+                  Staff ID
                 </label>
                 <Input
-                  id="email"
-                  type="email"
-                  placeholder="you@example.com"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  id="staffId"
+                  type="text"
+                  placeholder="e.g. D1234567"
+                  value={staffId}
+                  onChange={(e) => setStaffId(e.target.value.toUpperCase().slice(0, 8))}
                   disabled={isLoading}
                   required
-                  className="bg-secondary/5 border-secondary/20"
+                  className="font-mono tracking-widest text-lg bg-secondary/5 border-secondary/20"
+                  maxLength={8}
                 />
+                <p className="text-xs text-muted-foreground">8-character code — starts with a letter (A/D/R/E) followed by 7 digits</p>
               </div>
 
               <div className="space-y-2">
@@ -123,55 +121,33 @@ export default function LoginPage() {
                 />
               </div>
 
-              <Button
-                type="submit"
-                disabled={isLoading}
-                className="w-full bg-primary hover:bg-primary/90 text-primary-foreground font-medium"
-              >
+              <Button type="submit" disabled={isLoading || staffId.length !== 8} className="w-full bg-primary hover:bg-primary/90">
                 {isLoading ? 'Signing in...' : 'Sign In'}
               </Button>
             </form>
 
-            <div className="mt-6 space-y-4">
-              <div className="relative">
-                <div className="absolute inset-0 flex items-center">
-                  <div className="w-full border-t border-secondary/20"></div>
-                </div>
-                <div className="relative flex justify-center text-sm">
-                  <span className="px-2 bg-card text-muted-foreground">Need Access?</span>
-                </div>
-              </div>
+            <div className="mt-6 pt-4 border-t border-secondary/10 text-center">
+              <p className="text-sm text-muted-foreground mb-3">Are you a patient?</p>
               <Link href="/auth/patient-setup">
-                <Button
-                  variant="outline"
-                  className="w-full border-secondary/30 text-foreground hover:bg-secondary/5"
-                >
-                  Patient First-Time Login (Reception ID)
-                </Button>
-              </Link>
-              <Link href="/auth/register">
-                <Button
-                  variant="outline"
-                  className="w-full border-secondary/30 text-foreground hover:bg-secondary/5"
-                >
-                  Register Staff Account
+                <Button variant="outline" className="w-full border-secondary/30">
+                  Patient Login (Use your Patient ID)
                 </Button>
               </Link>
             </div>
           </CardContent>
         </Card>
 
-        {/* Demo Credentials */}
-        <Card className="mt-6 bg-secondary/5 border-secondary/20">
-          <CardContent className="pt-6">
-            <p className="text-xs font-semibold text-secondary mb-2">Demo Credentials:</p>
-            <div className="space-y-1 text-xs text-muted-foreground">
-              <p><span className="font-medium">Admin:</span> admin@hospital.com / admin123</p>
-              <p><span className="font-medium">Doctor:</span> doctor@hospital.com / doctor123</p>
-              <p><span className="font-medium">Reception:</span> reception@hospital.com / reception123</p>
-              <p><span className="font-medium">Driver:</span> driver@hospital.com / driver123</p>
-              <p><span className="font-medium">Patient:</span> patient@hospital.com / patient123</p>
+        {/* Demo credentials */}
+        <Card className="mt-4 bg-secondary/5 border-secondary/20">
+          <CardContent className="pt-4 pb-4">
+            <p className="text-xs font-semibold text-secondary mb-2">Demo Staff IDs:</p>
+            <div className="grid grid-cols-2 gap-1 text-xs text-muted-foreground">
+              <p><span className="font-medium">Admin:</span> A1000001 / 123456</p>
+              <p><span className="font-medium">Doctor:</span> D1000002 / 123456</p>
+              <p><span className="font-medium">Reception:</span> R1000003 / 123456</p>
+              <p><span className="font-medium">Driver:</span> E1000004 / 123456</p>
             </div>
+            <p className="text-xs text-muted-foreground mt-2 italic">Format: letter prefix + 7 digits (e.g. D1234567)</p>
           </CardContent>
         </Card>
       </div>

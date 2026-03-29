@@ -30,10 +30,10 @@ export default function Home() {
           </div>
           <div className="flex gap-3">
             <Link href="/auth/login" className="cursor-pointer">
-              <Button variant="outline" className="hover:scale-105 transition-transform duration-200">Sign In</Button>
+              <Button variant="outline" className="hover:scale-105 transition-transform duration-200">Staff Login</Button>
             </Link>
-            <Link href="/auth/register" className="cursor-pointer">
-              <Button className="hover:scale-105 transition-transform duration-200">Get Started</Button>
+            <Link href="/auth/patient-setup" className="cursor-pointer">
+              <Button className="hover:scale-105 transition-transform duration-200">Patient Login</Button>
             </Link>
           </div>
         </div>
@@ -49,9 +49,14 @@ export default function Home() {
           Streamline patient care, manage queues efficiently, allocate beds intelligently, and respond to emergencies with precision.
         </p>
         <div className="flex gap-4 justify-center flex-wrap">
-          <Link href="/auth/register" className="cursor-pointer">
+          <Link href="/auth/login" className="cursor-pointer">
             <Button size="lg" className="bg-primary hover:bg-primary/90 hover:scale-105 transition-all duration-200">
-              Start Free Trial
+              Staff Login
+            </Button>
+          </Link>
+          <Link href="/auth/patient-setup" className="cursor-pointer">
+            <Button size="lg" variant="outline" className="hover:scale-105 transition-all duration-200">
+              Patient Login
             </Button>
           </Link>
           <Link href="/emergency" className="cursor-pointer">
@@ -59,9 +64,6 @@ export default function Home() {
               Emergency Without Login
             </Button>
           </Link>
-          <Button size="lg" variant="outline" className="hover:scale-105 transition-all duration-200 cursor-pointer">
-            Watch Demo
-          </Button>
         </div>
       </section>
 
@@ -111,18 +113,18 @@ export default function Home() {
         <h3 className="text-2xl font-bold text-foreground mb-8 text-center">Try Demo Accounts</h3>
         <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
           {[
-            { role: 'Admin', email: 'admin@hospital.com', password: 'admin123' },
-            { role: 'Doctor', email: 'doctor@hospital.com', password: 'doctor123' },
-            { role: 'Reception', email: 'reception@hospital.com', password: 'reception123' },
-            { role: 'Patient', email: 'patient@hospital.com', password: 'patient123' },
+            { role: 'Admin', staffId: 'A1000001', password: '123456' },
+            { role: 'Doctor', staffId: 'D1000002', password: '123456' },
+            { role: 'Reception', staffId: 'R1000003', password: '123456' },
+            { role: 'Driver', staffId: 'E1000004', password: '123456' },
           ].map((demo, idx) => (
             <div key={idx} className="p-4 bg-card rounded border border-secondary/20 hover:border-secondary/40 hover:shadow-md hover:scale-105 transition-all duration-300 cursor-pointer group">
               <p className="font-semibold text-foreground mb-2 group-hover:text-primary transition-colors duration-300">{demo.role}</p>
               <p className="text-xs text-muted-foreground mb-1">
-                <span className="font-mono bg-secondary/10 px-2 py-1 rounded hover:bg-secondary/20 transition-colors duration-200 cursor-text">{demo.email}</span>
+                <span className="font-mono bg-secondary/10 px-2 py-1 rounded">Staff ID: {demo.staffId}</span>
               </p>
               <p className="text-xs text-muted-foreground">
-                <span className="font-mono bg-secondary/10 px-2 py-1 rounded hover:bg-secondary/20 transition-colors duration-200 cursor-text">{demo.password}</span>
+                <span className="font-mono bg-secondary/10 px-2 py-1 rounded">{demo.password}</span>
               </p>
             </div>
           ))}

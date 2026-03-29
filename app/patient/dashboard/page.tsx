@@ -78,17 +78,9 @@ export default function PatientDashboard() {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
-      <header className="border-b border-secondary/10 sticky top-0 bg-background/95 z-50">
-        <div className="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Heart className="w-6 h-6 text-primary" />
-            <h1 className="text-xl font-bold text-primary">HealthHub</h1>
-          </div>
-          <Button variant="outline" size="sm" onClick={handleLogout}>
-            <LogOut className="w-4 h-4 mr-2" />
-            Logout
-          </Button>
+      <header className="border-b border-secondary/10 sticky top-0 bg-background/95 z-10">
+        <div className="max-w-6xl mx-auto px-4 py-4">
+          <h1 className="text-xl font-bold text-primary">Dashboard</h1>
         </div>
       </header>
 

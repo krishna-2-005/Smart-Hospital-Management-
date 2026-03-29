@@ -11,9 +11,9 @@ import {
   Bed,
   Calendar,
   Heart,
-  LogOut,
   Stethoscope,
   Users,
+  UserCog,
 } from 'lucide-react';
 import { MetricCard } from '@/components/admin/metric-card';
 import { ActionTile } from '@/components/admin/action-tile';
@@ -81,11 +81,6 @@ export default function AdminDashboard() {
     return () => clearInterval(interval);
   }, []);
 
-  const handleLogout = async () => {
-    await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
-    router.push('/auth/login');
-  };
-
   const bedOccupancy =
     stats && stats.totalBeds > 0
       ? Math.round(((stats.totalBeds - stats.availableBeds) / stats.totalBeds) * 100)
@@ -95,32 +90,12 @@ export default function AdminDashboard() {
 
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,rgba(38,87,176,0.14),transparent_45%),radial-gradient(circle_at_85%_10%,rgba(28,148,106,0.14),transparent_35%),linear-gradient(180deg,#f7f9ff_0%,#eef2f9_100%)]">
-      {/* Header */}
-      <header className="sticky top-0 z-50 border-b border-border/60 bg-background/80 backdrop-blur-xl">
-        <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="rounded-xl bg-primary/10 p-2 text-primary">
-              <Heart className="h-5 w-5" />
-            </div>
-            <div>
-              <h1 className="text-xl font-bold text-primary">HealthHub Command Center</h1>
-              <p className="text-xs text-muted-foreground">Live operations monitoring</p>
-            </div>
-          </div>
-          <Button variant="outline" size="sm" className="bg-background/80" onClick={handleLogout}>
-            <LogOut className="w-4 h-4 mr-2" />
-            Logout
-          </Button>
-        </div>
-      </header>
-
-      {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 py-8">
         {/* Welcome */}
         <div className="mb-8 rounded-2xl border border-border/70 bg-background/70 p-6 shadow-lg shadow-primary/5 backdrop-blur-sm">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div>
-              <h2 className="text-3xl font-bold tracking-tight text-foreground">Hospital Dashboard</h2>
+              <h2 className="text-3xl font-bold tracking-tight text-foreground">Dashboard</h2>
               <p className="mt-1 text-muted-foreground">
                 Real-time command surface for patient flow, beds, staffing, and emergency response.
               </p>
@@ -347,53 +322,6 @@ export default function AdminDashboard() {
               </Card>
             </div>
 
-            {/* Quick Actions */}
-            <Card className="border-border/70 bg-background/70 backdrop-blur-sm">
-              <CardHeader>
-                <CardTitle>Control Room Actions</CardTitle>
-                <CardDescription>Jump directly into critical operational workflows</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-6">
-                  <ActionTile
-                    title="Manage Beds"
-                    description="Allocate, release, and monitor ward capacity."
-                    icon={Bed}
-                    onClick={() => router.push('/admin/beds')}
-                  />
-                  <ActionTile
-                    title="Emergency Desk"
-                    description="Prioritize high-risk cases and team assignment."
-                    icon={AlertTriangle}
-                    onClick={() => router.push('/admin/emergency')}
-                  />
-                  <ActionTile
-                    title="Smart ER Engine"
-                    description="Track ambulance, ETA, and pre-arrival hospital readiness."
-                    icon={Activity}
-                    onClick={() => router.push('/admin/emergency-response')}
-                  />
-                  <ActionTile
-                    title="Performance Analytics"
-                    description="Track metrics, trends, and throughput by role."
-                    icon={BarChart3}
-                    onClick={() => router.push('/admin/analytics')}
-                  />
-                  <ActionTile
-                    title="Doctor Floor"
-                    description="View doctors and active workload distribution."
-                    icon={Stethoscope}
-                    onClick={() => router.push('/admin/doctors')}
-                  />
-                  <ActionTile
-                    title="Patient Data"
-                    description="Open protected patient consultation table."
-                    icon={Users}
-                    onClick={() => router.push('/admin/patient-data')}
-                  />
-                </div>
-              </CardContent>
-            </Card>
           </>
         ) : (
           <Card className="border-border/70 bg-background/70">
