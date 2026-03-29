@@ -59,6 +59,26 @@ type DemoAppointment = {
   status: 'scheduled' | 'in-progress' | 'completed' | 'cancelled';
 };
 
+type DemoPrescription = {
+  id: number;
+  doctorId: number;
+  patientId: number;
+  medication: string;
+  dosage: string;
+  frequency: string;
+  duration: string;
+  instructions?: string;
+  status: 'active' | 'inactive' | 'expired' | 'pending';
+  issuedDate: string;
+};
+
+type DemoPrescriptionRefill = {
+  id: number;
+  prescriptionId: number;
+  requestedAt: string;
+  status: 'pending' | 'approved';
+};
+
 type DemoBed = {
   id: number;
   bedNumber: string;
@@ -157,6 +177,14 @@ type DemoAmbulance = {
   lng: number;
   status: 'available' | 'dispatched';
   currentRequestId: number | null;
+  shiftStatus: 'on-duty' | 'break' | 'off-duty';
+  fuelLevelPercent: number;
+  standbyZone: string;
+  oxygenKitReady: boolean;
+  defibrillatorReady: boolean;
+  stretcherReady: boolean;
+  vehicleNotes: string;
+  lastMaintenanceDate: string;
   updatedAt: string;
 };
 
@@ -177,9 +205,14 @@ type DemoEmergencyTimelineEvent = {
 };
 
 type DemoEmergencyNotification = {
+  id?: number;
   target: 'patient' | 'ambulance' | 'hospital';
   message: string;
   time: string;
+  priority?: 'normal' | 'emergency';
+  category?: string;
+  senderRole?: Role;
+  acknowledgedAt?: string | null;
 };
 
 type DemoSmartEmergencyRequest = {
@@ -218,6 +251,8 @@ type DemoStore = {
   patients: DemoPatient[];
   queues: DemoQueue[];
   appointments: DemoAppointment[];
+  prescriptions: DemoPrescription[];
+  prescriptionRefills: DemoPrescriptionRefill[];
   beds: DemoBed[];
   bedAllocations: DemoBedAllocation[];
   emergencies: DemoEmergency[];
@@ -230,11 +265,14 @@ type DemoStore = {
     patientId: number;
     queueId: number;
     appointmentId: number;
+    prescriptionId: number;
+    prescriptionRefillId: number;
     bedAllocationId: number;
     emergencyId: number;
     ambulanceId: number;
     hospitalId: number;
     smartEmergencyId: number;
+    notificationId: number;
   };
 };
 
@@ -340,6 +378,21 @@ function seedStore(): DemoStore {
         status: 'scheduled',
       },
     ],
+    prescriptions: [
+      {
+        id: 1,
+        doctorId: 1,
+        patientId: 1,
+        medication: 'Paracetamol',
+        dosage: '500mg',
+        frequency: 'Twice daily',
+        duration: '5 days',
+        instructions: 'Take after meals',
+        status: 'active',
+        issuedDate: now,
+      },
+    ],
+    prescriptionRefills: [],
     beds: [
       {
         id: 1,
@@ -419,6 +472,14 @@ function seedStore(): DemoStore {
         lng: 77.219,
         status: 'available',
         currentRequestId: null,
+        shiftStatus: 'on-duty',
+        fuelLevelPercent: 78,
+        standbyZone: 'Central Zone - Gate 2',
+        oxygenKitReady: true,
+        defibrillatorReady: true,
+        stretcherReady: true,
+        vehicleNotes: 'Ready for rapid dispatch.',
+        lastMaintenanceDate: new Date(Date.now() - 1000 * 60 * 60 * 24 * 8).toISOString(),
         updatedAt: now,
       },
       {
@@ -431,6 +492,14 @@ function seedStore(): DemoStore {
         lng: 77.206,
         status: 'available',
         currentRequestId: null,
+        shiftStatus: 'on-duty',
+        fuelLevelPercent: 64,
+        standbyZone: 'North Zone - Trauma Wing',
+        oxygenKitReady: true,
+        defibrillatorReady: true,
+        stretcherReady: true,
+        vehicleNotes: 'Backup oxygen cylinder loaded.',
+        lastMaintenanceDate: new Date(Date.now() - 1000 * 60 * 60 * 24 * 15).toISOString(),
         updatedAt: now,
       },
       {
@@ -443,6 +512,14 @@ function seedStore(): DemoStore {
         lng: 77.234,
         status: 'available',
         currentRequestId: null,
+        shiftStatus: 'break',
+        fuelLevelPercent: 51,
+        standbyZone: 'South Zone - City Border',
+        oxygenKitReady: true,
+        defibrillatorReady: true,
+        stretcherReady: true,
+        vehicleNotes: 'Refuel planned after current standby period.',
+        lastMaintenanceDate: new Date(Date.now() - 1000 * 60 * 60 * 24 * 23).toISOString(),
         updatedAt: now,
       },
     ],
@@ -482,11 +559,14 @@ function seedStore(): DemoStore {
       patientId: 2,
       queueId: 2,
       appointmentId: 2,
+      prescriptionId: 2,
+      prescriptionRefillId: 1,
       bedAllocationId: 2,
       emergencyId: 2,
       ambulanceId: 4,
       hospitalId: 4,
       smartEmergencyId: 1,
+      notificationId: 1,
     },
   };
 }
@@ -549,6 +629,28 @@ function getLiveMainHospitalCapacity(store: DemoStore) {
   return { availableIcuBeds, availableGeneralBeds };
 }
 
+function ensureAmbulanceDefaults(ambulance: DemoAmbulance) {
+  ambulance.shiftStatus = ambulance.shiftStatus || 'on-duty';
+  ambulance.fuelLevelPercent = Number.isFinite(ambulance.fuelLevelPercent)
+    ? Math.min(100, Math.max(0, ambulance.fuelLevelPercent))
+    : 100;
+  ambulance.standbyZone = ambulance.standbyZone || 'Unassigned Zone';
+  ambulance.oxygenKitReady = typeof ambulance.oxygenKitReady === 'boolean' ? ambulance.oxygenKitReady : true;
+  ambulance.defibrillatorReady =
+    typeof ambulance.defibrillatorReady === 'boolean' ? ambulance.defibrillatorReady : true;
+  ambulance.stretcherReady = typeof ambulance.stretcherReady === 'boolean' ? ambulance.stretcherReady : true;
+  ambulance.vehicleNotes = ambulance.vehicleNotes || '';
+  ambulance.lastMaintenanceDate = ambulance.lastMaintenanceDate || new Date().toISOString();
+}
+
+function normalizeStore(store: DemoStore) {
+  if (!Number.isInteger(store.counters.notificationId) || store.counters.notificationId < 1) {
+    store.counters.notificationId = 1;
+  }
+
+  store.ambulances.forEach((ambulance) => ensureAmbulanceDefaults(ambulance));
+}
+
 function appendEmergencyEvent(request: DemoSmartEmergencyRequest, status: EmergencyStatus, message: string) {
   const now = new Date().toISOString();
   if (request.timeline.some((event) => event.status === status)) {
@@ -562,12 +664,23 @@ function appendEmergencyEvent(request: DemoSmartEmergencyRequest, status: Emerge
 function appendEmergencyNotification(
   request: DemoSmartEmergencyRequest,
   target: DemoEmergencyNotification['target'],
-  message: string
+  message: string,
+  options?: {
+    priority?: 'normal' | 'emergency';
+    category?: string;
+    senderRole?: Role;
+    notificationId?: number;
+  }
 ) {
   request.notifications.push({
+    id: options?.notificationId,
     target,
     message,
     time: new Date().toISOString(),
+    priority: options?.priority || 'normal',
+    category: options?.category,
+    senderRole: options?.senderRole,
+    acknowledgedAt: null,
   });
 }
 
@@ -615,7 +728,10 @@ function updateSmartEmergencyProgress(store: DemoStore, request: DemoSmartEmerge
     request.lastKnownAmbulanceLat = hospital.lat;
     request.lastKnownAmbulanceLng = hospital.lng;
     appendEmergencyEvent(request, 'arrived', 'Patient reached hospital. Handover completed.');
-    appendEmergencyNotification(request, 'hospital', 'Patient arrived at emergency bay.');
+    appendEmergencyNotification(request, 'hospital', 'Patient arrived at emergency bay.', {
+      priority: 'normal',
+      notificationId: store.counters.notificationId++,
+    });
     ambulance.status = 'available';
     ambulance.currentRequestId = null;
   } else {
@@ -651,7 +767,10 @@ function getStore(): DemoStore {
   if (!globalObj[globalKey]) {
     globalObj[globalKey] = seedStore();
   }
-  return globalObj[globalKey] as DemoStore;
+
+  const store = globalObj[globalKey] as DemoStore;
+  normalizeStore(store);
+  return store;
 }
 
 export function validateDemoCredentials(email: string, password: string) {
@@ -1315,6 +1434,117 @@ export function getEmergencyCases() {
   });
 }
 
+export function getPrescriptions(userId: number, role: Role) {
+  const store = getStore();
+
+  const mapForPatientView = (rx: DemoPrescription) => {
+    const doctor = store.doctors.find((d) => d.id === rx.doctorId);
+    const doctorUser = doctor ? store.users.find((u) => u.id === doctor.userId) : null;
+    return {
+      id: rx.id,
+      medication: rx.medication,
+      dosage: rx.dosage,
+      frequency: rx.frequency,
+      duration: rx.duration,
+      status: rx.status,
+      doctorName: doctorUser ? `${doctorUser.firstName} ${doctorUser.lastName}` : 'Unknown Doctor',
+      issuedDate: rx.issuedDate,
+      instructions: rx.instructions || '',
+    };
+  };
+
+  const mapForDoctorView = (rx: DemoPrescription) => {
+    const patient = store.patients.find((p) => p.id === rx.patientId);
+    const patientUser = patient ? store.users.find((u) => u.id === patient.userId) : null;
+    return {
+      id: rx.id,
+      patientName: patientUser ? `${patientUser.firstName} ${patientUser.lastName}` : 'Unknown Patient',
+      patientId: patient?.patientId || 'NA',
+      medication: rx.medication,
+      dosage: rx.dosage,
+      frequency: rx.frequency,
+      duration: rx.duration,
+      status: rx.status,
+      issuedDate: rx.issuedDate,
+      instructions: rx.instructions || '',
+    };
+  };
+
+  if (role === 'patient') {
+    const patient = store.patients.find((p) => p.userId === userId);
+    if (!patient) return [];
+    return store.prescriptions
+      .filter((rx) => rx.patientId === patient.id)
+      .sort((a, b) => (a.issuedDate > b.issuedDate ? -1 : 1))
+      .map(mapForPatientView);
+  }
+
+  if (role === 'doctor') {
+    const doctor = store.doctors.find((d) => d.userId === userId);
+    if (!doctor) return [];
+    return store.prescriptions
+      .filter((rx) => rx.doctorId === doctor.id)
+      .sort((a, b) => (a.issuedDate > b.issuedDate ? -1 : 1))
+      .map(mapForDoctorView);
+  }
+
+  return store.prescriptions
+    .sort((a, b) => (a.issuedDate > b.issuedDate ? -1 : 1))
+    .map((rx) => {
+      const patientRow = mapForDoctorView(rx);
+      const doctorRow = mapForPatientView(rx);
+      return {
+        ...patientRow,
+        doctorName: doctorRow.doctorName,
+      };
+    });
+}
+
+export function issuePrescription(
+  patientId: number | string,
+  medication: string,
+  dosage: string,
+  frequency: string,
+  duration: string
+) {
+  const store = getStore();
+  const normalizedPatientId = Number(patientId);
+  const now = new Date().toISOString();
+
+  const patient = store.patients.find((p) => p.id === normalizedPatientId);
+  const fallbackDoctorId = store.doctors[0]?.id || 1;
+
+  const prescription: DemoPrescription = {
+    id: store.counters.prescriptionId++,
+    doctorId: fallbackDoctorId,
+    patientId: patient?.id || 1,
+    medication,
+    dosage,
+    frequency,
+    duration,
+    instructions: '',
+    status: 'active',
+    issuedDate: now,
+  };
+
+  store.prescriptions.push(prescription);
+  return prescription;
+}
+
+export function requestRefill(prescriptionId: number | string) {
+  const store = getStore();
+  const now = new Date().toISOString();
+  const refill: DemoPrescriptionRefill = {
+    id: store.counters.prescriptionRefillId++,
+    prescriptionId: Number(prescriptionId),
+    requestedAt: now,
+    status: 'pending',
+  };
+
+  store.prescriptionRefills.push(refill);
+  return refill;
+}
+
 export function updateEmergencyStatus(caseId: number, status: DemoEmergency['status']) {
   const store = getStore();
   const emergency = store.emergencies.find((e) => e.id === caseId);
@@ -1832,6 +2062,13 @@ export function getSmartEmergencyAdminOverview() {
   };
 }
 
+function findAmbulanceForDriver(store: DemoStore, userId: number, fullName: string) {
+  return (
+    store.ambulances.find((item) => item.driverUserId === userId) ||
+    store.ambulances.find((item) => item.driverName.toLowerCase() === fullName)
+  );
+}
+
 export function getDriverEmergencyOverview(userId: number) {
   const store = getStore();
   const user = store.users.find((item) => item.id === userId);
@@ -1840,9 +2077,7 @@ export function getDriverEmergencyOverview(userId: number) {
   store.smartEmergencies.forEach((request) => updateSmartEmergencyProgress(store, request));
 
   const fullName = `${user.firstName} ${user.lastName}`.toLowerCase();
-  const ambulance =
-    store.ambulances.find((item) => item.driverUserId === userId) ||
-    store.ambulances.find((item) => item.driverName.toLowerCase() === fullName);
+  const ambulance = findAmbulanceForDriver(store, userId, fullName);
 
   if (!ambulance) {
     return {
@@ -1854,8 +2089,16 @@ export function getDriverEmergencyOverview(userId: number) {
       ambulance: null,
       activeRequest: null,
       recentUpdates: [],
+      emergencyAlerts: [],
+      performance: {
+        completedCasesToday: 0,
+        activeCases: 0,
+        emergencyAlertsSentToday: 0,
+      },
     };
   }
+
+  ensureAmbulanceDefaults(ambulance);
 
   const currentRequest = ambulance.currentRequestId
     ? store.smartEmergencies.find((item) => item.id === ambulance.currentRequestId)
@@ -1876,6 +2119,31 @@ export function getDriverEmergencyOverview(userId: number) {
     .sort((first, second) => (first.time > second.time ? -1 : 1))
     .slice(0, 8);
 
+  const emergencyAlerts = store.smartEmergencies
+    .filter((request) => request.assignedAmbulanceId === ambulance.id)
+    .flatMap((request) =>
+      request.notifications
+        .filter((note) => note.priority === 'emergency' && note.senderRole === 'driver')
+        .map((note) => ({
+          id: note.id || null,
+          requestId: request.id,
+          patientName: request.patientName,
+          message: note.message,
+          time: note.time,
+          category: note.category || 'critical-update',
+          target: note.target,
+        }))
+    )
+    .sort((first, second) => (first.time > second.time ? -1 : 1))
+    .slice(0, 6);
+
+  const today = new Date().toISOString().slice(0, 10);
+  const completedCasesToday = store.smartEmergencies.filter(
+    (request) => request.assignedAmbulanceId === ambulance.id && request.status === 'arrived' && request.updatedAt.slice(0, 10) === today
+  ).length;
+
+  const emergencyAlertsSentToday = emergencyAlerts.filter((alert) => alert.time.slice(0, 10) === today).length;
+
   const activeRequest = currentRequest
     ? (() => {
         const hospital = store.hospitals.find((item) => item.id === currentRequest.selectedHospitalId);
@@ -1895,6 +2163,8 @@ export function getDriverEmergencyOverview(userId: number) {
             ? {
                 name: hospital.name,
                 requiredBedType: currentRequest.requiredBedType,
+                lat: hospital.lat,
+                lng: hospital.lng,
               }
             : null,
           timeline: currentRequest.timeline,
@@ -1915,9 +2185,215 @@ export function getDriverEmergencyOverview(userId: number) {
       lat: Number(ambulance.lat.toFixed(5)),
       lng: Number(ambulance.lng.toFixed(5)),
       currentRequestId: ambulance.currentRequestId,
+      shiftStatus: ambulance.shiftStatus,
+      fuelLevelPercent: ambulance.fuelLevelPercent,
+      standbyZone: ambulance.standbyZone,
+      oxygenKitReady: ambulance.oxygenKitReady,
+      defibrillatorReady: ambulance.defibrillatorReady,
+      stretcherReady: ambulance.stretcherReady,
+      vehicleNotes: ambulance.vehicleNotes,
+      lastMaintenanceDate: ambulance.lastMaintenanceDate,
     },
     activeRequest,
     recentUpdates,
+    emergencyAlerts,
+    performance: {
+      completedCasesToday,
+      activeCases: currentRequest ? 1 : 0,
+      emergencyAlertsSentToday,
+    },
+  };
+}
+
+export function updateDriverOperationalProfile(
+  userId: number,
+  input: {
+    name?: string;
+    phone?: string;
+    lat?: number;
+    lng?: number;
+    shiftStatus?: 'on-duty' | 'break' | 'off-duty';
+    fuelLevelPercent?: number;
+    standbyZone?: string;
+    oxygenKitReady?: boolean;
+    defibrillatorReady?: boolean;
+    stretcherReady?: boolean;
+    vehicleNotes?: string;
+    lastMaintenanceDate?: string;
+  }
+) {
+  const store = getStore();
+  const user = store.users.find((item) => item.id === userId);
+  if (!user || user.role !== 'driver') {
+    return { ok: false, error: 'Driver account not found' as const };
+  }
+
+  const fullName = `${user.firstName} ${user.lastName}`.toLowerCase();
+  const ambulance = findAmbulanceForDriver(store, userId, fullName);
+
+  if (!ambulance) {
+    return { ok: false, error: 'No ambulance assigned to this driver' as const };
+  }
+
+  ensureAmbulanceDefaults(ambulance);
+
+  if (typeof input.name === 'string') {
+    const normalizedName = input.name.trim().replace(/\s+/g, ' ');
+    if (normalizedName.length < 3) {
+      return { ok: false, error: 'Driver name must be at least 3 characters' as const };
+    }
+
+    const parts = normalizedName.split(' ');
+    user.firstName = parts[0];
+    user.lastName = parts.slice(1).join(' ') || 'Driver';
+    ambulance.driverName = normalizedName;
+  }
+
+  if (typeof input.phone === 'string') {
+    const normalizedPhone = input.phone.replace(/[^0-9]/g, '').slice(0, 15);
+    if (normalizedPhone.length < 10) {
+      return { ok: false, error: 'Driver phone must be at least 10 digits' as const };
+    }
+    user.phone = normalizedPhone;
+    ambulance.driverPhone = normalizedPhone;
+  }
+
+  if (typeof input.lat === 'number') {
+    if (input.lat < -90 || input.lat > 90) {
+      return { ok: false, error: 'Latitude must be between -90 and 90' as const };
+    }
+    ambulance.lat = Number(input.lat.toFixed(5));
+  }
+
+  if (typeof input.lng === 'number') {
+    if (input.lng < -180 || input.lng > 180) {
+      return { ok: false, error: 'Longitude must be between -180 and 180' as const };
+    }
+    ambulance.lng = Number(input.lng.toFixed(5));
+  }
+
+  if (typeof input.shiftStatus === 'string') {
+    if (!['on-duty', 'break', 'off-duty'].includes(input.shiftStatus)) {
+      return { ok: false, error: 'Invalid shift status' as const };
+    }
+    ambulance.shiftStatus = input.shiftStatus;
+  }
+
+  if (typeof input.fuelLevelPercent === 'number') {
+    if (input.fuelLevelPercent < 0 || input.fuelLevelPercent > 100) {
+      return { ok: false, error: 'Fuel level must be between 0 and 100' as const };
+    }
+    ambulance.fuelLevelPercent = Number(input.fuelLevelPercent.toFixed(0));
+  }
+
+  if (typeof input.standbyZone === 'string') {
+    const value = input.standbyZone.trim();
+    if (value.length < 3) {
+      return { ok: false, error: 'Standby zone must be at least 3 characters' as const };
+    }
+    ambulance.standbyZone = value.slice(0, 80);
+  }
+
+  if (typeof input.oxygenKitReady === 'boolean') ambulance.oxygenKitReady = input.oxygenKitReady;
+  if (typeof input.defibrillatorReady === 'boolean') ambulance.defibrillatorReady = input.defibrillatorReady;
+  if (typeof input.stretcherReady === 'boolean') ambulance.stretcherReady = input.stretcherReady;
+
+  if (typeof input.vehicleNotes === 'string') {
+    ambulance.vehicleNotes = input.vehicleNotes.trim().slice(0, 240);
+  }
+
+  if (typeof input.lastMaintenanceDate === 'string') {
+    const parsedDate = new Date(input.lastMaintenanceDate);
+    if (Number.isNaN(parsedDate.getTime())) {
+      return { ok: false, error: 'Invalid maintenance date' as const };
+    }
+    ambulance.lastMaintenanceDate = parsedDate.toISOString();
+  }
+
+  ambulance.updatedAt = new Date().toISOString();
+
+  return {
+    ok: true,
+    data: getDriverEmergencyOverview(userId),
+  };
+}
+
+export function sendDriverEmergencyAlert(
+  userId: number,
+  input: {
+    requestId: number;
+    alertType:
+      | 'patient-critical'
+      | 'route-blocked'
+      | 'requires-icu-prep'
+      | 'oxygen-support-needed'
+      | 'security-support';
+    message?: string;
+  }
+) {
+  const store = getStore();
+  const user = store.users.find((item) => item.id === userId);
+  if (!user || user.role !== 'driver') {
+    return { ok: false, error: 'Driver account not found' as const };
+  }
+
+  const fullName = `${user.firstName} ${user.lastName}`.toLowerCase();
+  const ambulance = findAmbulanceForDriver(store, userId, fullName);
+
+  if (!ambulance) {
+    return { ok: false, error: 'No ambulance assigned to this driver' as const };
+  }
+
+  if (ambulance.currentRequestId !== input.requestId) {
+    return { ok: false, error: 'This emergency is not assigned to your ambulance' as const };
+  }
+
+  const request = store.smartEmergencies.find((item) => item.id === input.requestId);
+  if (!request) {
+    return { ok: false, error: 'Emergency request not found' as const };
+  }
+
+  const alertMessageMap: Record<typeof input.alertType, string> = {
+    'patient-critical': 'Patient condition is worsening, immediate emergency bay support required.',
+    'route-blocked': 'Primary route is blocked. Switching to alternate emergency route.',
+    'requires-icu-prep': 'Please keep ICU stabilization team and bed ready before arrival.',
+    'oxygen-support-needed': 'Prepare high-flow oxygen support at emergency entrance.',
+    'security-support': 'Need security support for fast handover at emergency gate.',
+  };
+
+  const composedMessage = (input.message || alertMessageMap[input.alertType]).trim();
+  if (!composedMessage) {
+    return { ok: false, error: 'Alert message cannot be empty' as const };
+  }
+
+  const hospitalNotificationId = store.counters.notificationId++;
+  const ambulanceNotificationId = store.counters.notificationId++;
+  const prefixed = `EMERGENCY ALERT (${ambulance.vehicleCode}): ${composedMessage}`;
+
+  appendEmergencyNotification(request, 'hospital', prefixed, {
+    priority: 'emergency',
+    category: input.alertType,
+    senderRole: 'driver',
+    notificationId: hospitalNotificationId,
+  });
+
+  appendEmergencyNotification(request, 'ambulance', `Alert broadcast to hospital: ${composedMessage}`, {
+    priority: 'emergency',
+    category: input.alertType,
+    senderRole: 'driver',
+    notificationId: ambulanceNotificationId,
+  });
+
+  request.updatedAt = new Date().toISOString();
+
+  return {
+    ok: true,
+    data: {
+      requestId: request.id,
+      alertType: input.alertType,
+      message: composedMessage,
+      sentAt: request.updatedAt,
+    },
   };
 }
 
@@ -1936,9 +2412,7 @@ export function updateDriverEmergencyStatus(
   }
 
   const fullName = `${user.firstName} ${user.lastName}`.toLowerCase();
-  const ambulance =
-    store.ambulances.find((item) => item.driverUserId === userId) ||
-    store.ambulances.find((item) => item.driverName.toLowerCase() === fullName);
+  const ambulance = findAmbulanceForDriver(store, userId, fullName);
 
   if (!ambulance) {
     return { ok: false, error: 'No ambulance assigned to this driver' as const };
@@ -1976,14 +2450,24 @@ export function updateDriverEmergencyStatus(
   appendEmergencyNotification(
     request,
     'ambulance',
-    noteText || `Status updated to ${input.status.replace('-', ' ')} by ${user.firstName}.`
+    noteText || `Status updated to ${input.status.replace('-', ' ')} by ${user.firstName}.`,
+    {
+      priority: 'normal',
+      senderRole: 'driver',
+      notificationId: store.counters.notificationId++,
+    }
   );
 
   if (input.status === 'hospital-notified' || input.status === 'arriving' || input.status === 'arrived') {
     appendEmergencyNotification(
       request,
       'hospital',
-      noteText || `Ambulance ${ambulance.vehicleCode}: ${input.status.replace('-', ' ')}.`
+      noteText || `Ambulance ${ambulance.vehicleCode}: ${input.status.replace('-', ' ')}.`,
+      {
+        priority: 'normal',
+        senderRole: 'driver',
+        notificationId: store.counters.notificationId++,
+      }
     );
   }
 

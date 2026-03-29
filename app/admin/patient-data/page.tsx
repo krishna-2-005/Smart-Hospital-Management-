@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import {
@@ -39,11 +39,17 @@ interface PatientDataRecord {
 
 export default function AdminPatientDataPage() {
   const router = useRouter();
-  const searchParams = useSearchParams();
   const [records, setRecords] = useState<PatientDataRecord[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [wardFilter, setWardFilter] = useState(searchParams.get('ward') || 'all');
-  const [intakeFilter, setIntakeFilter] = useState(searchParams.get('intakeType') || 'all');
+  const [wardFilter, setWardFilter] = useState('all');
+  const [intakeFilter, setIntakeFilter] = useState('all');
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    setWardFilter(params.get('ward') || 'all');
+    setIntakeFilter(params.get('intakeType') || 'all');
+  }, []);
 
   const loadRecords = async (ward: string, intakeType: string) => {
     setIsLoading(true);

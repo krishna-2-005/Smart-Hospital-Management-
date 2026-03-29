@@ -1,6 +1,6 @@
 'use client';
 
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -82,7 +82,6 @@ const rangeMultiplier: Record<TimeRange, number> = {
 
 export default function AnalyticsPage() {
   const router = useRouter();
-  const searchParams = useSearchParams();
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [timeRange, setTimeRange] = useState<TimeRange>('today');
   const [isLoading, setIsLoading] = useState(true);
@@ -90,11 +89,17 @@ export default function AnalyticsPage() {
   const [selectedIntakeType, setSelectedIntakeType] = useState('all');
   const [patientRecords, setPatientRecords] = useState<PatientDataRecord[]>([]);
   const [isRecordsLoading, setIsRecordsLoading] = useState(false);
-  const focus = searchParams.get('focus');
+  const [focus, setFocus] = useState<string | null>(null);
 
   const throughputSectionRef = useRef<HTMLDivElement | null>(null);
   const intakeSectionRef = useRef<HTMLDivElement | null>(null);
   const recordsSectionRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    setFocus(params.get('focus'));
+  }, []);
 
   useEffect(() => {
     if (!focus) return;
