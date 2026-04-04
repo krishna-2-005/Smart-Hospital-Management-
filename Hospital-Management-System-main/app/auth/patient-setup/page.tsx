@@ -43,8 +43,8 @@ export default function PatientSetupPage() {
     setError('');
     setIsLoading(true);
 
-    if (!loginData.patientId || !loginData.password) {
-      setError('Please enter your Patient ID and password');
+    if (!loginData.patientId) {
+      setError('Please enter your Patient ID');
       setIsLoading(false);
       return;
     }
@@ -192,9 +192,12 @@ export default function PatientSetupPage() {
                   type="password"
                   value={loginData.password}
                   onChange={handleLoginChange}
-                  placeholder="Enter your password"
+                  placeholder="Leave blank for first-time setup"
                   disabled={isLoading}
                 />
+                <p className="text-xs text-muted-foreground mt-1">
+                  Existing patients enter password. First-time patients can leave this blank.
+                </p>
               </div>
 
               <Button

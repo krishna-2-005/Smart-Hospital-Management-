@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
-import { query } from '@/lib/db';
+import { query } from '@/lib/db-server';
 import { getPrescriptions, issuePrescription, requestRefill } from '@/lib/demo-store';
 
 // GET - Retrieve prescriptions for patient or issued by doctor
@@ -11,7 +11,7 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    let prescriptions = [];
+    let prescriptions: any = [];
 
     if (user.role === 'patient') {
       // Get prescriptions for this patient

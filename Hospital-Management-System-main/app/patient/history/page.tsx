@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { ArrowLeft, Clock } from 'lucide-react';
+import { ArrowLeft, BedDouble, Clock } from 'lucide-react';
 
 interface AppointmentHistory {
   id: number;
@@ -16,8 +16,23 @@ interface AppointmentHistory {
   status: string;
 }
 
+interface BedHistory {
+  id: number;
+  bedNumber: string;
+  ward: string;
+  bedType: string;
+  admissionReason?: string;
+  diagnosis?: string;
+  admittingDoctorName?: string;
+  expectedStayDays?: number;
+  status: string;
+  allocatedAt: string;
+  releasedAt?: string | null;
+}
+
 export default function HistoryPage() {
   const [history, setHistory] = useState<AppointmentHistory[]>([]);
+  const [bedHistory, setBedHistory] = useState<BedHistory[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const router = useRouter();
 
@@ -25,9 +40,14 @@ export default function HistoryPage() {
     const fetchHistory = async () => {
       try {
         const res = await fetch('/api/patient/appointments', { credentials: 'include' });
+        const bedRes = await fetch('/api/patient/bed-history', { credentials: 'include' });
         if (res.ok) {
           const data = await res.json();
           setHistory((data.appointments || []).filter((item: AppointmentHistory) => item.status !== 'scheduled'));
+        }
+        if (bedRes.ok) {
+          const bedData = await bedRes.json();
+          setBedHistory(bedData.bedHistory || []);
         }
       } catch (error) {
         console.error('Error loading history:', error);
@@ -79,6 +99,50 @@ export default function HistoryPage() {
                     <p className="mt-2 text-sm text-foreground">{item.reason}</p>
                     <p className="mt-2 text-xs text-muted-foreground">
                       {new Date(item.date).toLocaleDateString()} at {item.time}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="border-secondary/20 mt-6">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <BedDouble className="h-5 w-5 text-secondary" />
+              Bed Allocation History
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {isLoading ? (
+              <div className="py-8 text-center text-muted-foreground">Loading bed history...</div>
+            ) : bedHistory.length === 0 ? (
+              <div className="py-8 text-center text-muted-foreground">
+                No bed allocation history yet.
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {bedHistory.map((item) => (
+                  <div key={item.id} className="rounded-lg border border-secondary/20 p-4">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className="font-semibold text-foreground">
+                        Bed {item.bedNumber} ({item.ward} / {item.bedType})
+                      </p>
+                      <span className="rounded bg-secondary/15 px-2 py-1 text-xs font-semibold text-secondary capitalize">
+                        {item.status}
+                      </span>
+                    </div>
+                    {item.admissionReason && (
+                      <p className="mt-2 text-sm text-foreground">Reason: {item.admissionReason}</p>
+                    )}
+                    {item.diagnosis && <p className="text-sm text-muted-foreground">Diagnosis: {item.diagnosis}</p>}
+                    {item.admittingDoctorName && (
+                      <p className="text-sm text-muted-foreground">Admitting Doctor: {item.admittingDoctorName}</p>
+                    )}
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      Allocated: {new Date(item.allocatedAt).toLocaleString()}
+                      {item.releasedAt ? ` | Released: ${new Date(item.releasedAt).toLocaleString()}` : ' | Active admission'}
                     </p>
                   </div>
                 ))}

@@ -35,7 +35,8 @@ export async function middleware(request: NextRequest) {
         const roleRedirects: Record<string, string> = {
           admin: '/admin/dashboard',
           doctor: '/doctor/queue',
-          reception: '/reception/queue',
+          reception: '/reception/dashboard',
+          driver: '/driver/dashboard',
           patient: '/patient/dashboard',
         };
         return NextResponse.redirect(new URL(roleRedirects[decoded.role] || '/', request.url));
@@ -59,6 +60,7 @@ export async function middleware(request: NextRequest) {
     admin: [/^\/admin/, /^\/api\/admin/],
     doctor: [/^\/doctor/, /^\/api\/doctor/],
     reception: [/^\/reception/, /^\/api\/reception/],
+    driver: [/^\/driver/, /^\/api\/driver/],
     patient: [/^\/patient/, /^\/api\/patient/],
   };
 

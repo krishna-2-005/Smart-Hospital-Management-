@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Empty } from '@/components/ui/empty';
+import { Empty, EmptyMedia, EmptyTitle, EmptyDescription } from '@/components/ui/empty';
 import { Calendar, ArrowLeft } from 'lucide-react';
 
 interface Appointment {
@@ -145,11 +145,12 @@ export default function AppointmentsPage() {
             {isLoading ? (
               <div className="text-center py-8">Loading...</div>
             ) : appointments.length === 0 ? (
-              <Empty
-                icon={Calendar}
-                title="No Appointments"
-                description="You haven't booked any appointments yet. Schedule one to get started."
-              >
+              <Empty>
+                <EmptyMedia variant="icon">
+                  <Calendar className="size-6" />
+                </EmptyMedia>
+                <EmptyTitle>No Appointments</EmptyTitle>
+                <EmptyDescription>You haven't booked any appointments yet. Schedule one to get started.</EmptyDescription>
                 <Button className="mt-4 bg-primary hover:bg-primary/90" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}>
                   Book an Appointment
                 </Button>

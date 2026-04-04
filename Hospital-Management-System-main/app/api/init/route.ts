@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { query } from '@/lib/db';
+import { query } from '@/lib/db-server';
 import { hashPassword } from '@/lib/auth';
 
 export async function GET(request: NextRequest) {
@@ -16,7 +16,8 @@ export async function GET(request: NextRequest) {
         await query(`
           CREATE TABLE IF NOT EXISTS users (
             id SERIAL PRIMARY KEY,
-            email VARCHAR(255) UNIQUE NOT NULL,
+            staff_id VARCHAR(8) UNIQUE,
+            email VARCHAR(255) UNIQUE,
             password_hash VARCHAR(255) NOT NULL,
             first_name VARCHAR(100) NOT NULL,
             last_name VARCHAR(100) NOT NULL,
@@ -70,11 +71,47 @@ export async function GET(request: NextRequest) {
           CREATE TABLE IF NOT EXISTS beds (
             id SERIAL PRIMARY KEY,
             bed_number VARCHAR(20) UNIQUE NOT NULL,
-            ward_type VARCHAR(50),
+            ward VARCHAR(100),
+            bed_type VARCHAR(50),
             floor_number INTEGER,
             is_available BOOLEAN DEFAULT true,
-            patient_id INTEGER REFERENCES patients(id),
+            allocated_to_patient_id INTEGER REFERENCES patients(id),
+            allocated_at TIMESTAMP,
+            notes TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+          )
+        `);
+
+        await query('ALTER TABLE beds ADD COLUMN IF NOT EXISTS ward VARCHAR(100)');
+        await query('ALTER TABLE beds ADD COLUMN IF NOT EXISTS bed_type VARCHAR(50)');
+        await query('ALTER TABLE beds ADD COLUMN IF NOT EXISTS allocated_to_patient_id INTEGER REFERENCES patients(id)');
+        await query('ALTER TABLE beds ADD COLUMN IF NOT EXISTS allocated_at TIMESTAMP');
+        await query('ALTER TABLE beds ADD COLUMN IF NOT EXISTS notes TEXT');
+
+        await query(`
+          CREATE TABLE IF NOT EXISTS bed_allocations (
+            id SERIAL PRIMARY KEY,
+            bed_id INTEGER NOT NULL REFERENCES beds(id) ON DELETE CASCADE,
+            patient_id INTEGER NOT NULL REFERENCES patients(id) ON DELETE CASCADE,
+            allocated_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+            admission_reason TEXT,
+            admission_diagnosis TEXT,
+            admitting_doctor_name VARCHAR(150),
+            expected_stay_days INTEGER,
+            insurance_provider VARCHAR(120),
+            insurance_policy_number VARCHAR(120),
+            emergency_contact_name VARCHAR(120),
+            emergency_contact_phone VARCHAR(30),
+            clinical_notes TEXT,
+            requires_ventilator BOOLEAN DEFAULT false,
+            requires_isolation BOOLEAN DEFAULT false,
+            diet_type VARCHAR(60),
+            allergies_confirmed BOOLEAN DEFAULT false,
+            status VARCHAR(30) DEFAULT 'active',
+            allocated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            released_at TIMESTAMP,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
           )
         `);
 
@@ -125,72 +162,27 @@ export async function GET(request: NextRequest) {
     const usersCount = await query('SELECT COUNT(*) as count FROM users');
     if (parseInt(usersCount.rows[0].count) === 0) {
       const demoUsers = [
-        {
-          email: 'admin@hospital.com',
-          password: 'admin123',
-          firstName: 'System',
-          lastName: 'Admin',
-          role: 'admin',
-        },
-        {
-          email: 'doctor@hospital.com',
-          password: 'doctor123',
-          firstName: 'Sarah',
-          lastName: 'Wilson',
-          role: 'doctor',
-        },
-        {
-          email: 'reception@hospital.com',
-          password: 'reception123',
-          firstName: 'Emma',
-          lastName: 'Davis',
-          role: 'reception',
-        },
-        {
-          email: 'patient@hospital.com',
-          password: 'patient123',
-          firstName: 'John',
-          lastName: 'Doe',
-          role: 'patient',
-        },
+        { staffId: 'A1000001', email: 'admin@staff.local',     password: '123456', firstName: 'System', lastName: 'Admin',  role: 'admin' },
+        { staffId: 'D1000002', email: 'doctor@staff.local',    password: '123456', firstName: 'Sarah',  lastName: 'Wilson', role: 'doctor' },
+        { staffId: 'R1000003', email: 'reception@staff.local', password: '123456', firstName: 'Emma',   lastName: 'Davis',  role: 'reception' },
+        { staffId: 'E1000004', email: 'driver@staff.local',    password: '123456', firstName: 'Rahul',  lastName: 'Singh',  role: 'driver' },
       ];
 
       for (const demoUser of demoUsers) {
         const passwordHash = await hashPassword(demoUser.password);
         const userInsertResult = await query(
-          `
-            INSERT INTO users (email, password_hash, first_name, last_name, role, is_active)
-            VALUES ($1, $2, $3, $4, $5, true)
-            RETURNING id, role
-          `,
-          [
-            demoUser.email,
-            passwordHash,
-            demoUser.firstName,
-            demoUser.lastName,
-            demoUser.role,
-          ]
+          `INSERT INTO users (staff_id, email, password_hash, first_name, last_name, role, is_active, must_change_password)
+           VALUES ($1, $2, $3, $4, $5, $6, true, false)
+           RETURNING id, role`,
+          [demoUser.staffId, demoUser.email, passwordHash, demoUser.firstName, demoUser.lastName, demoUser.role]
         );
 
         const createdUser = userInsertResult.rows[0];
 
         if (createdUser.role === 'doctor') {
           await query(
-            `
-              INSERT INTO doctors (user_id, specialization, license_number, is_available)
-              VALUES ($1, $2, $3, true)
-            `,
+            `INSERT INTO doctors (user_id, specialization, license_number, is_available) VALUES ($1, $2, $3, true)`,
             [createdUser.id, 'General Medicine', 'DOC-001']
-          );
-        }
-
-        if (createdUser.role === 'patient') {
-          await query(
-            `
-              INSERT INTO patients (user_id, patient_id, blood_type)
-              VALUES ($1, $2, $3)
-            `,
-            [createdUser.id, `PAT-${createdUser.id}`, 'O+']
           );
         }
       }

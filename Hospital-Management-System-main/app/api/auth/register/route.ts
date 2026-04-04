@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { query } from '@/lib/db';
+import { query } from '@/lib/db-server';
 import { hashPassword, setAuthCookie, generateToken } from '@/lib/auth';
 import { registerDemoUser } from '@/lib/demo-store';
 
 export async function POST(request: NextRequest) {
-  try {
-    const { email, password, firstName, lastName, role, userType } = await request.json();
+  const { email, password, firstName, lastName, role, userType } = await request.json();
 
+  try {
     // Validate input
     if (!email || !password || !firstName || !lastName) {
       return NextResponse.json(
@@ -15,9 +15,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!['admin', 'doctor', 'reception', 'patient'].includes(role)) {
+    if (!['admin', 'doctor', 'reception', 'driver'].includes(role)) {
       return NextResponse.json(
-        { error: 'Invalid role' },
+        { error: 'Invalid role. Patient registration must be done by reception.' },
         { status: 400 }
       );
     }
@@ -43,16 +43,6 @@ export async function POST(request: NextRequest) {
     );
 
     const user = userResult.rows[0];
-
-    // If patient role, create patient record with unique ID
-    if (role === 'patient') {
-      const patientId = `PATIENT${Date.now()}${Math.floor(Math.random() * 10000)}`.slice(0, 11);
-      await query(
-        `INSERT INTO patients (user_id, patient_id_unique)
-         VALUES ($1, $2)`,
-        [user.id, patientId]
-      );
-    }
 
     // If doctor role, create doctor record
     if (role === 'doctor') {
@@ -116,11 +106,6 @@ export async function POST(request: NextRequest) {
         },
       },
       { status: 201 }
-    );
-
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
     );
   }
 }

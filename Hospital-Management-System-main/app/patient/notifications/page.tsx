@@ -482,8 +482,8 @@ export default function NotificationsPage() {
               </div>
             </div>
           </DialogContent>
+        </Dialog>
         )}
-      )}
     </div>
   );
 }

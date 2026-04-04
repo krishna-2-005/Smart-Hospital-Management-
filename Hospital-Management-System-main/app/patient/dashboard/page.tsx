@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Heart, Calendar, Clock, AlertCircle, LogOut, AlertTriangle } from 'lucide-react';
+import { Heart, Calendar, Clock, AlertCircle, LogOut, AlertTriangle, Pill, BellRing, ShieldCheck } from 'lucide-react';
 
 interface QueueStatus {
   queuePosition: number | null;
@@ -64,6 +64,10 @@ export default function PatientDashboard() {
     router.push('/auth/login');
   };
 
+  const careReadinessScore = queueStatus?.queuePosition
+    ? Math.max(52, 100 - queueStatus.queuePosition * 4)
+    : 86;
+
   if (isLoading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -74,17 +78,9 @@ export default function PatientDashboard() {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
-      <header className="border-b border-secondary/10 sticky top-0 bg-background/95 z-50">
-        <div className="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Heart className="w-6 h-6 text-primary" />
-            <h1 className="text-xl font-bold text-primary">HealthHub</h1>
-          </div>
-          <Button variant="outline" size="sm" onClick={handleLogout}>
-            <LogOut className="w-4 h-4 mr-2" />
-            Logout
-          </Button>
+      <header className="border-b border-secondary/10 sticky top-0 bg-background/95 z-10">
+        <div className="max-w-6xl mx-auto px-4 py-4">
+          <h1 className="text-xl font-bold text-primary">Dashboard</h1>
         </div>
       </header>
 
@@ -107,7 +103,7 @@ export default function PatientDashboard() {
           </div>
         )}
 
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
           {/* Queue Status Card */}
           {queueStatus && queueStatus.queuePosition !== null && (
             <Card className="border-secondary/20 lg:col-span-2">
@@ -198,6 +194,56 @@ export default function PatientDashboard() {
           </Card>
         </div>
 
+        <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-3">
+          <Card className="border-secondary/20 lg:col-span-2 bg-gradient-to-br from-primary/5 to-secondary/5">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <ShieldCheck className="w-5 h-5 text-secondary" />
+                Personal Care Readiness
+              </CardTitle>
+              <CardDescription>How prepared your current treatment journey is</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="rounded-lg border border-secondary/20 bg-background/70 p-4">
+                <p className="text-sm text-muted-foreground">Current readiness score</p>
+                <p className="text-4xl font-bold text-primary mt-1">{careReadinessScore}%</p>
+                <div className="mt-3 h-2 rounded-full bg-secondary/15">
+                  <div className="h-2 rounded-full bg-primary" style={{ width: `${careReadinessScore}%` }} />
+                </div>
+              </div>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div className="rounded-lg border border-border/70 bg-background/80 p-3">
+                  <p className="text-xs text-muted-foreground uppercase">Next Care Step</p>
+                  <p className="font-semibold mt-1">Review doctor advice after consultation</p>
+                </div>
+                <div className="rounded-lg border border-border/70 bg-background/80 p-3">
+                  <p className="text-xs text-muted-foreground uppercase">Estimated Slot Window</p>
+                  <p className="font-semibold mt-1">
+                    {queueStatus?.estimatedWaitTime ? `Within ${queueStatus.estimatedWaitTime + 5} mins` : 'No active wait'}
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="border-secondary/20">
+            <CardHeader>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <BellRing className="w-4 h-4 text-amber-600" />
+                Health Reminders
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3 text-sm">
+              <div className="rounded-md border border-amber-500/20 bg-amber-500/5 p-2">Keep emergency contact updated</div>
+              <div className="rounded-md border border-secondary/20 bg-secondary/5 p-2">Carry allergy and blood group details</div>
+              <div className="rounded-md border border-blue-500/20 bg-blue-500/5 p-2">Check notifications for prescription updates</div>
+              <Button variant="outline" className="w-full" onClick={() => router.push('/patient/notifications')}>
+                Open Notifications
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
+
         {/* Health Info Card */}
         {profile && (
           <Card className="mt-6 border-secondary/20">
@@ -220,6 +266,16 @@ export default function PatientDashboard() {
                   onClick={() => router.push('/patient/profile')}
                 >
                   Update Health Information
+                </Button>
+              </div>
+              <div className="md:col-span-2">
+                <Button
+                  variant="outline"
+                  className="w-full border-secondary/30"
+                  onClick={() => router.push('/patient/prescriptions')}
+                >
+                  <Pill className="w-4 h-4 mr-2" />
+                  View Prescription & Medication Plan
                 </Button>
               </div>
             </CardContent>

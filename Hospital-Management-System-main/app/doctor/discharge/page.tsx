@@ -377,8 +377,8 @@ export default function DoctorDischargesPage() {
               </div>
             </div>
           </DialogContent>
+        </Dialog>
         )}
-      )}
     </div>
   );
 }

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { AlertTriangle, Bell, Building2, Clock, MapPin, Navigation, Send } from 'lucide-react';
+import { AlertTriangle, Bell, Building2, Clock, MapPin, Navigation, Send, ShieldCheck, Siren } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -176,6 +176,9 @@ export default function PublicEmergencyPage() {
   };
 
   const timeline = useMemo(() => status?.timeline || [], [status]);
+  const readinessScore = status
+    ? Math.max(55, 100 - status.etaMinutes * 2 - (status.hospital?.distanceKm || 0))
+    : 92;
 
   return (
     <div className="min-h-screen bg-background">
@@ -191,7 +194,7 @@ export default function PublicEmergencyPage() {
         </div>
       </header>
 
-      <main className="max-w-6xl mx-auto px-4 py-8 space-y-6">
+      <main className="max-w-6xl mx-auto px-4 py-6 sm:py-8 space-y-6">
         <Card className="border-destructive/20 bg-destructive/5">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-destructive">
@@ -216,12 +219,13 @@ export default function PublicEmergencyPage() {
             <CardContent className="py-12 text-center text-muted-foreground">Loading module...</CardContent>
           </Card>
         ) : !requestId || (status && status.status === 'arrived') ? (
-          <Card className="border-secondary/20">
-            <CardHeader>
-              <CardTitle>Emergency Request Form</CardTitle>
-              <CardDescription>Submit once and track live ambulance movement without sign-in.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-5">
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+            <Card className="border-secondary/20 lg:col-span-2">
+              <CardHeader>
+                <CardTitle>Emergency Request Form</CardTitle>
+                <CardDescription>Submit once and track live ambulance movement without sign-in.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-5">
               <div className="grid md:grid-cols-3 gap-3">
                 <Input value={callerName} onChange={(event) => setCallerName(event.target.value)} placeholder="Caller name" />
                 <Input value={callerPhone} onChange={(event) => setCallerPhone(event.target.value)} placeholder="Caller phone (optional)" />
@@ -272,8 +276,25 @@ export default function PublicEmergencyPage() {
                 <Send className="w-4 h-4 mr-2" />
                 {isSubmitting ? 'Dispatching Ambulance...' : 'Emergency: Dispatch Ambulance'}
               </Button>
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
+
+            <Card className="border-secondary/20">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-lg">
+                  <ShieldCheck className="w-5 h-5 text-secondary" />
+                  Emergency Guide
+                </CardTitle>
+                <CardDescription>Critical steps while ambulance is being dispatched</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3 text-sm">
+                <div className="rounded-md border border-destructive/20 bg-destructive/5 p-2">Keep patient breathing path clear and monitor consciousness.</div>
+                <div className="rounded-md border border-amber-500/20 bg-amber-500/5 p-2">Do not give food/water during severe chest pain or stroke signs.</div>
+                <div className="rounded-md border border-blue-500/20 bg-blue-500/5 p-2">Share current medicines and allergy history with responders.</div>
+                <div className="rounded-md border border-secondary/20 bg-secondary/5 p-2">Keep one contact person ready near pickup location.</div>
+              </CardContent>
+            </Card>
+          </div>
         ) : (
           <div className="space-y-6">
             <div className="grid gap-4 md:grid-cols-3">
@@ -290,6 +311,25 @@ export default function PublicEmergencyPage() {
                 <CardContent className="text-2xl font-bold text-secondary flex items-center gap-2"><Clock className="w-5 h-5" />{status?.etaMinutes} min</CardContent>
               </Card>
             </div>
+
+            <Card className="border-secondary/20 bg-secondary/5">
+              <CardContent className="pt-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-sm text-muted-foreground">Response readiness</p>
+                  <p className="text-3xl font-bold text-primary">{readinessScore}%</p>
+                </div>
+                <div className="w-full sm:w-2/3">
+                  <div className="h-3 rounded-full bg-secondary/20">
+                    <div className="h-3 rounded-full bg-secondary" style={{ width: `${readinessScore}%` }} />
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-2">Calculated from ETA, hospital distance, and dispatch stage.</p>
+                </div>
+                <Badge variant="outline" className="w-fit">
+                  <Siren className="w-3 h-3 mr-1" />
+                  Active Dispatch
+                </Badge>
+              </CardContent>
+            </Card>
 
             <div className="grid gap-4 lg:grid-cols-2">
               <Card>

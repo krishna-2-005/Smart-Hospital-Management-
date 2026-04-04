@@ -5,7 +5,7 @@ import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Heart, LogOut, Users, Clock, AlertTriangle, CheckCircle, TrendingUp } from 'lucide-react';
+import { Heart, LogOut, Users, Clock, AlertTriangle, CheckCircle, TrendingUp, ClipboardList, UserRoundCheck, ShieldAlert } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
 import { AddPatientForm } from '@/components/reception/add-patient-form';
 
@@ -22,7 +22,15 @@ export default function ReceptionDashboard() {
   const router = useRouter();
   const [stats, setStats] = useState<QueueStats | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
+  const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
+  const [pendingEmergencyAlerts, setPendingEmergencyAlerts] = useState(0);
+  const [latestEmergency, setLatestEmergency] = useState<{
+    requestId: number;
+    message: string;
+    category: string;
+    alertId: number | null;
+  } | null>(null);
+  const [isAckingEmergency, setIsAckingEmergency] = useState(false);
 
   useEffect(() => {
     const fetchStats = async () => {
@@ -57,6 +65,60 @@ export default function ReceptionDashboard() {
     return () => clearInterval(interval);
   }, []);
 
+  useEffect(() => {
+    const loadEmergencyInbox = async () => {
+      try {
+        const res = await fetch('/api/reception/emergency-response', { credentials: 'include' });
+        if (!res.ok) return;
+        const data = await res.json();
+        setPendingEmergencyAlerts(Number(data.pendingEmergencyAlerts || 0));
+        const firstPending = (data.pending || []).find((item: any) => item.unacknowledgedCount > 0 && item.latestEmergencyAlert);
+        if (firstPending?.latestEmergencyAlert) {
+          setLatestEmergency({
+            requestId: firstPending.requestId,
+            message: firstPending.latestEmergencyAlert.message,
+            category: firstPending.latestEmergencyAlert.category,
+            alertId: firstPending.latestEmergencyAlert.id ?? null,
+          });
+        } else {
+          setLatestEmergency(null);
+        }
+      } catch (error) {
+        console.error('Failed to load reception emergency inbox', error);
+      }
+    };
+
+    loadEmergencyInbox();
+    const interval = setInterval(loadEmergencyInbox, 7000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const acknowledgeEmergencyAlert = async () => {
+    if (!latestEmergency) return;
+    setIsAckingEmergency(true);
+    try {
+      await fetch('/api/reception/emergency-response', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          requestId: latestEmergency.requestId,
+          alertId: latestEmergency.alertId || undefined,
+        }),
+      });
+      setLatestEmergency(null);
+      setPendingEmergencyAlerts((prev) => Math.max(0, prev - 1));
+    } catch (error) {
+      console.error('Failed to acknowledge emergency alert', error);
+    } finally {
+      setIsAckingEmergency(false);
+    }
+  };
+
+  const formattedLastRefresh = lastRefresh
+    ? lastRefresh.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true })
+    : '--:--:--';
+
   const handleLogout = async () => {
     await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
     router.push('/auth/login');
@@ -70,28 +132,19 @@ export default function ReceptionDashboard() {
 
   return (
     <div className="min-h-screen bg-background">
-      <header className="border-b border-secondary/10 sticky top-0 bg-background/95 z-50">
+      <header className="border-b border-secondary/10 sticky top-0 bg-background/95 z-10">
         <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Heart className="w-6 h-6 text-primary" />
-            <h1 className="text-xl font-bold text-primary">HealthHub - Reception</h1>
-          </div>
-          <div className="flex items-center gap-3">
-            <AddPatientForm />
-            <Button variant="outline" size="sm" onClick={handleLogout}>
-              <LogOut className="w-4 h-4 mr-2" />
-              Logout
-            </Button>
-          </div>
+          <h1 className="text-xl font-bold text-primary">Reception</h1>
+          <AddPatientForm />
         </div>
       </header>
 
       <main className="max-w-7xl mx-auto px-4 py-8">
-        <div className="flex items-center justify-between mb-8">
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-8">
           <div>
             <h2 className="text-3xl font-bold text-foreground">Reception Command Center</h2>
-            <p className="text-muted-foreground text-sm mt-1">
-              Last updated: {lastRefresh.toLocaleTimeString()}
+            <p className="text-muted-foreground text-sm mt-1" suppressHydrationWarning>
+              Last updated: {formattedLastRefresh}
             </p>
           </div>
           <Badge 
@@ -110,7 +163,7 @@ export default function ReceptionDashboard() {
         </div>
 
         {/* Key Metrics Cards */}
-        <div className="grid md:grid-cols-5 gap-4 mb-8">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5 mb-8">
           <Card className="border-secondary/20 bg-gradient-to-br from-blue-50 to-blue-50/50">
             <CardContent className="pt-6">
               <p className="text-muted-foreground text-xs font-semibold uppercase mb-2">Total in Queue</p>
@@ -159,7 +212,39 @@ export default function ReceptionDashboard() {
         </div>
 
         {/* Quick Actions and Operations */}
-        <div className="grid md:grid-cols-3 gap-6">
+        <Card className="border-destructive/20 bg-destructive/5 mb-6">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <ShieldAlert className="w-5 h-5 text-destructive" />
+              Emergency Coordination
+            </CardTitle>
+            <CardDescription>
+              Pending hospital acknowledgements: {pendingEmergencyAlerts}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3 text-sm">
+            {latestEmergency ? (
+              <>
+                <div className="rounded-md border border-destructive/30 bg-background p-3">
+                  <p className="text-xs uppercase text-muted-foreground">{latestEmergency.category.replace(/-/g, ' ')}</p>
+                  <p className="mt-1">{latestEmergency.message}</p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button variant="destructive" onClick={acknowledgeEmergencyAlert} disabled={isAckingEmergency}>
+                    {isAckingEmergency ? 'Acknowledging...' : 'Acknowledge Emergency Alert'}
+                  </Button>
+                  <Button variant="outline" onClick={() => router.push('/reception/emergency-response')}>
+                    Open Command Center
+                  </Button>
+                </div>
+              </>
+            ) : (
+              <p className="text-muted-foreground">No pending emergency acknowledgements for reception team.</p>
+            )}
+          </CardContent>
+        </Card>
+
+        <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
           {/* Queue Management */}
           <Card className="border-secondary/20 md:col-span-2">
             <CardHeader>
@@ -191,10 +276,10 @@ export default function ReceptionDashboard() {
                   <Button
                     variant="outline"
                     className="border-secondary/30 h-10"
-                    onClick={() => router.push('/reception/queue')}
+                    onClick={() => router.push('/reception/patients')}
                   >
                     <TrendingUp className="w-4 h-4 mr-2" />
-                    Add to Queue
+                    Patient Records
                   </Button>
                 </div>
               </div>
@@ -255,6 +340,55 @@ export default function ReceptionDashboard() {
                 onClick={() => router.push('/reception/queue')}
               >
                 View Detailed Queue
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
+
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 mt-6">
+          <Card className="border-secondary/20">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <ClipboardList className="w-5 h-5 text-secondary" />
+                Front Desk Task Board
+              </CardTitle>
+              <CardDescription>Priority tasks to keep patient flow stable</CardDescription>
+            </CardHeader>
+            <CardContent className="grid grid-cols-1 gap-3 sm:grid-cols-2 text-sm">
+              <div className="rounded-md border border-secondary/20 bg-secondary/5 p-3">Validate incoming patient details before queue entry</div>
+              <div className="rounded-md border border-blue-500/20 bg-blue-500/5 p-3">Escalate emergency tags to available doctors</div>
+              <div className="rounded-md border border-amber-500/20 bg-amber-500/5 p-3">Re-check patients waiting over 20 minutes</div>
+              <div className="rounded-md border border-green-500/20 bg-green-500/5 p-3">Confirm contact and insurance for billing handoff</div>
+            </CardContent>
+          </Card>
+
+          <Card className="border-secondary/20">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <UserRoundCheck className="w-5 h-5 text-primary" />
+                Service Quality Monitor
+              </CardTitle>
+              <CardDescription>Real-time indicators for front desk quality</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div>
+                <div className="flex items-center justify-between text-sm mb-2">
+                  <span>Check-in Completion</span>
+                  <span className="font-semibold">{stats ? Math.max(70, Math.min(99, 100 - stats.noShowsToday * 8)) : 0}%</span>
+                </div>
+                <Progress value={stats ? Math.max(70, Math.min(99, 100 - stats.noShowsToday * 8)) : 0} className="h-2" />
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between text-sm mb-2">
+                  <span>Queue Communication</span>
+                  <span className="font-semibold">{stats ? Math.max(68, 100 - stats.averageWaitTime * 2) : 0}%</span>
+                </div>
+                <Progress value={stats ? Math.max(68, 100 - stats.averageWaitTime * 2) : 0} className="h-2" />
+              </div>
+
+              <Button className="w-full" variant="outline" onClick={() => router.push('/reception/patients')}>
+                Open Patient Records Workspace
               </Button>
             </CardContent>
           </Card>

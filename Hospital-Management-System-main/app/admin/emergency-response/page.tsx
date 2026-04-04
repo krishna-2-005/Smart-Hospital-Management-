@@ -1,11 +1,12 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, Building2, Clock, Navigation, ShieldAlert, Siren, Activity } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { useToast } from '@/hooks/use-toast';
 
 interface AdminOverview {
   uspLine: string;
@@ -38,6 +39,16 @@ interface AdminOverview {
       target: string;
       message: string;
       time: string;
+      priority?: 'normal' | 'emergency';
+      acknowledgedAt?: string | null;
+      category?: string;
+    } | null;
+    latestEmergencyAlert: {
+      id: number | null;
+      message: string;
+      time: string;
+      acknowledgedAt: string | null;
+      category: string;
     } | null;
   }>;
   ambulances: Array<{
@@ -51,10 +62,32 @@ interface AdminOverview {
   }>;
 }
 
+interface HospitalInboxResponse {
+  role: 'admin' | 'doctor' | 'reception';
+  overview: AdminOverview;
+  pending: Array<{
+    requestId: number;
+    patientName: string;
+    status: string;
+    etaMinutes: number;
+    unacknowledgedCount: number;
+    latestEmergencyAlert: {
+      id: number | null;
+      message: string;
+      time: string;
+      category: string;
+      acknowledgedAt: string | null;
+    } | null;
+  }>;
+  pendingEmergencyAlerts: number;
+}
+
 export default function EmergencyResponsePage() {
   const router = useRouter();
-  const [data, setData] = useState<AdminOverview | null>(null);
+  const { toast } = useToast();
+  const [data, setData] = useState<HospitalInboxResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [ackRequestId, setAckRequestId] = useState<number | null>(null);
 
   const loadOverview = async () => {
     try {
@@ -67,6 +100,45 @@ export default function EmergencyResponsePage() {
       console.error('Failed to load emergency overview', error);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const pendingByRequest = useMemo(() => {
+    const map = new Map<number, HospitalInboxResponse['pending'][number]>();
+    (data?.pending || []).forEach((item) => {
+      map.set(item.requestId, item);
+    });
+    return map;
+  }, [data?.pending]);
+
+  const acknowledgeAlert = async (requestId: number, alertId?: number | null) => {
+    setAckRequestId(requestId);
+    try {
+      const res = await fetch('/api/admin/emergency-response', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ requestId, alertId: alertId || undefined }),
+      });
+
+      const payload = await res.json();
+      if (!res.ok) {
+        throw new Error(payload.error || 'Failed to acknowledge emergency alert');
+      }
+
+      toast({
+        title: 'Alert Acknowledged',
+        description: 'Driver and patient channels were notified with hospital confirmation.',
+      });
+      await loadOverview();
+    } catch (error: any) {
+      toast({
+        title: 'Acknowledgement Failed',
+        description: error.message || 'Unable to acknowledge emergency alert',
+        variant: 'destructive',
+      });
+    } finally {
+      setAckRequestId(null);
     }
   };
 
@@ -95,9 +167,15 @@ export default function EmergencyResponsePage() {
           <CardHeader>
             <CardTitle className="text-lg">USP Positioning</CardTitle>
             <CardDescription>
-              {data?.uspLine || 'We do not just send ambulances - we prepare the hospital before the patient arrives.'}
+              {data?.overview.uspLine || 'We do not just send ambulances - we prepare the hospital before the patient arrives.'}
             </CardDescription>
           </CardHeader>
+          <CardContent className="pt-0">
+            <div className="inline-flex items-center gap-2 rounded-md border border-destructive/20 bg-destructive/5 px-3 py-2 text-sm">
+              <ShieldAlert className="h-4 w-4 text-destructive" />
+              Pending emergency acknowledgements: <span className="font-semibold">{data?.pendingEmergencyAlerts || 0}</span>
+            </div>
+          </CardContent>
         </Card>
 
         {isLoading ? (
@@ -117,7 +195,7 @@ export default function EmergencyResponsePage() {
                 </CardHeader>
                 <CardContent className="text-3xl font-bold text-destructive flex items-center gap-2">
                   <ShieldAlert className="w-6 h-6" />
-                  {data.stats.activeRequests}
+                  {data.overview.stats.activeRequests}
                 </CardContent>
               </Card>
 
@@ -127,7 +205,7 @@ export default function EmergencyResponsePage() {
                 </CardHeader>
                 <CardContent className="text-3xl font-bold text-secondary flex items-center gap-2">
                   <Siren className="w-6 h-6" />
-                  {data.stats.availableAmbulances}
+                  {data.overview.stats.availableAmbulances}
                 </CardContent>
               </Card>
 
@@ -137,7 +215,7 @@ export default function EmergencyResponsePage() {
                 </CardHeader>
                 <CardContent className="text-3xl font-bold text-primary flex items-center gap-2">
                   <Building2 className="w-6 h-6" />
-                  {data.stats.hospitalsOnNetwork}
+                  {data.overview.stats.hospitalsOnNetwork}
                 </CardContent>
               </Card>
 
@@ -147,7 +225,7 @@ export default function EmergencyResponsePage() {
                 </CardHeader>
                 <CardContent className="text-3xl font-bold text-foreground flex items-center gap-2">
                   <Clock className="w-6 h-6" />
-                  {data.stats.averageEtaMinutes}m
+                  {data.overview.stats.averageEtaMinutes}m
                 </CardContent>
               </Card>
             </div>
@@ -158,10 +236,10 @@ export default function EmergencyResponsePage() {
                 <CardDescription>Patient to ambulance to hospital pipeline with real-time status.</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                {data.requests.length === 0 ? (
+                {data.overview.requests.length === 0 ? (
                   <p className="text-sm text-muted-foreground">No active emergency requests right now.</p>
                 ) : (
-                  data.requests.map((request) => (
+                  data.overview.requests.map((request) => (
                     <div key={request.id} className="rounded-lg border border-secondary/15 p-4 space-y-3">
                       <div className="flex flex-wrap items-center justify-between gap-3">
                         <div>
@@ -172,7 +250,14 @@ export default function EmergencyResponsePage() {
                             {request.emergencyType} • ETA {request.etaMinutes} min
                           </p>
                         </div>
-                        <Badge className="capitalize">{request.status.replace('-', ' ')}</Badge>
+                        <div className="flex items-center gap-2">
+                          {pendingByRequest.get(request.id)?.unacknowledgedCount ? (
+                            <Badge variant="destructive">
+                              {pendingByRequest.get(request.id)?.unacknowledgedCount} pending ack
+                            </Badge>
+                          ) : null}
+                          <Badge className="capitalize">{request.status.replace('-', ' ')}</Badge>
+                        </div>
                       </div>
 
                       <p className="text-sm text-muted-foreground">{request.conditionSummary}</p>
@@ -200,6 +285,32 @@ export default function EmergencyResponsePage() {
                           </p>
                         </div>
                       </div>
+
+                      {request.latestEmergencyAlert && !request.latestEmergencyAlert.acknowledgedAt ? (
+                        <div className="rounded-md border border-destructive/20 bg-destructive/5 p-3">
+                          <p className="text-xs font-semibold uppercase text-destructive">
+                            Emergency Alert: {request.latestEmergencyAlert.category.replace(/-/g, ' ')}
+                          </p>
+                          <p className="text-sm mt-1">{request.latestEmergencyAlert.message}</p>
+                          <div className="mt-3 flex items-center justify-between gap-3">
+                            <p className="text-xs text-muted-foreground">
+                              {new Date(request.latestEmergencyAlert.time).toLocaleString()}
+                            </p>
+                            <Button
+                              size="sm"
+                              variant="destructive"
+                              disabled={ackRequestId === request.id}
+                              onClick={() => acknowledgeAlert(request.id, request.latestEmergencyAlert?.id || null)}
+                            >
+                              {ackRequestId === request.id ? 'Acknowledging...' : 'Acknowledge Alert'}
+                            </Button>
+                          </div>
+                        </div>
+                      ) : request.latestEmergencyAlert?.acknowledgedAt ? (
+                        <div className="rounded-md border border-secondary/20 bg-secondary/5 p-3 text-sm">
+                          Alert acknowledged at {new Date(request.latestEmergencyAlert.acknowledgedAt).toLocaleString()}.
+                        </div>
+                      ) : null}
                     </div>
                   ))
                 )}
@@ -212,7 +323,7 @@ export default function EmergencyResponsePage() {
                 <CardDescription>Driver availability and live assignment state.</CardDescription>
               </CardHeader>
               <CardContent className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-                {data.ambulances.map((ambulance) => (
+                {data.overview.ambulances.map((ambulance) => (
                   <div key={ambulance.id} className="rounded-lg border border-secondary/15 p-4 space-y-2">
                     <div className="flex items-center justify-between">
                       <p className="font-semibold">{ambulance.vehicleCode}</p>

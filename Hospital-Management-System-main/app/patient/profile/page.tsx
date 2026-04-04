@@ -13,6 +13,7 @@ interface PatientProfile {
   firstName: string;
   lastName: string;
   patientId: string;
+  age?: number;
   email: string;
   phone: string;
   dateOfBirth: string;
@@ -26,6 +27,28 @@ interface PatientProfile {
   city: string;
   state: string;
   zipCode: string;
+  currentBed?: {
+    bedNumber: string;
+    ward: string;
+    bedType: string;
+    allocatedAt: string;
+    admissionReason?: string;
+    diagnosis?: string;
+    admittingDoctorName?: string;
+    expectedStayDays?: number;
+    dietType?: string;
+  } | null;
+  bedHistory?: Array<{
+    id: number;
+    bedNumber: string;
+    ward: string;
+    bedType: string;
+    admissionReason?: string;
+    diagnosis?: string;
+    status: string;
+    allocatedAt: string;
+    releasedAt?: string | null;
+  }>;
 }
 
 export default function ProfilePage() {
@@ -161,13 +184,8 @@ export default function ProfilePage() {
                   <Input value={profile.patientId} disabled className="bg-secondary/5" />
                 </div>
                 <div>
-                  <label className="text-sm font-medium text-foreground mb-1 block">Date of Birth</label>
-                  <Input
-                    type="date"
-                    value={profile.dateOfBirth}
-                    onChange={(e) => setProfile({ ...profile, dateOfBirth: e.target.value })}
-                    className="bg-secondary/5 border-secondary/20"
-                  />
+                  <label className="text-sm font-medium text-foreground mb-1 block">Age</label>
+                  <Input value={profile.age ?? ''} disabled className="bg-secondary/5" />
                 </div>
               </div>
             </CardContent>
@@ -184,18 +202,18 @@ export default function ProfilePage() {
                   <label className="text-sm font-medium text-foreground mb-1 block">Gender</label>
                   <Input
                     value={profile.gender}
-                    onChange={(e) => setProfile({ ...profile, gender: e.target.value })}
                     placeholder="Male / Female / Other"
-                    className="bg-secondary/5 border-secondary/20"
+                    disabled
+                    className="bg-secondary/5"
                   />
                 </div>
                 <div>
                   <label className="text-sm font-medium text-foreground mb-1 block">Blood Type</label>
                   <Input
                     value={profile.bloodType}
-                    onChange={(e) => setProfile({ ...profile, bloodType: e.target.value })}
                     placeholder="A+, B-, O+, etc."
-                    className="bg-secondary/5 border-secondary/20"
+                    disabled
+                    className="bg-secondary/5"
                   />
                 </div>
               </div>
@@ -203,9 +221,9 @@ export default function ProfilePage() {
                 <label className="text-sm font-medium text-foreground mb-1 block">Allergies</label>
                 <Textarea
                   value={profile.allergies}
-                  onChange={(e) => setProfile({ ...profile, allergies: e.target.value })}
                   placeholder="List any known allergies"
-                  className="bg-secondary/5 border-secondary/20"
+                  disabled
+                  className="bg-secondary/5"
                   rows={3}
                 />
               </div>
@@ -213,12 +231,68 @@ export default function ProfilePage() {
                 <label className="text-sm font-medium text-foreground mb-1 block">Medical History</label>
                 <Textarea
                   value={profile.medicalHistory}
-                  onChange={(e) => setProfile({ ...profile, medicalHistory: e.target.value })}
                   placeholder="Previous conditions, surgeries, medications, etc."
-                  className="bg-secondary/5 border-secondary/20"
+                  disabled
+                  className="bg-secondary/5"
                   rows={4}
                 />
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Medical history can be updated by reception/clinical staff and is visible here as read-only.
+                </p>
               </div>
+            </CardContent>
+          </Card>
+
+          <Card className="border-secondary/20">
+            <CardHeader>
+              <CardTitle>Bed Allocation Status</CardTitle>
+              <CardDescription>
+                Current admission bed details and recent bed history entries.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {profile.currentBed ? (
+                <div className="rounded-lg border border-secondary/20 bg-secondary/5 p-4 space-y-1">
+                  <p className="text-xs text-muted-foreground uppercase">Currently Admitted</p>
+                  <p className="text-lg font-semibold text-foreground">
+                    Bed {profile.currentBed.bedNumber} ({profile.currentBed.ward} / {profile.currentBed.bedType})
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    Allocated on {new Date(profile.currentBed.allocatedAt).toLocaleString()}
+                  </p>
+                  {profile.currentBed.admissionReason && (
+                    <p className="text-sm">Reason: {profile.currentBed.admissionReason}</p>
+                  )}
+                  {profile.currentBed.diagnosis && (
+                    <p className="text-sm">Diagnosis: {profile.currentBed.diagnosis}</p>
+                  )}
+                  {profile.currentBed.admittingDoctorName && (
+                    <p className="text-sm">Admitting Doctor: {profile.currentBed.admittingDoctorName}</p>
+                  )}
+                </div>
+              ) : (
+                <div className="rounded-lg border border-green-500/20 bg-green-500/5 p-4 text-sm text-green-800">
+                  No active bed allocation at the moment.
+                </div>
+              )}
+
+              {profile.bedHistory && profile.bedHistory.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-sm font-medium">Recent Bed History</p>
+                  {profile.bedHistory.slice(0, 3).map((entry) => (
+                    <div key={entry.id} className="rounded-md border border-secondary/20 p-3 text-sm">
+                      <p className="font-semibold text-foreground">
+                        Bed {entry.bedNumber} ({entry.ward} / {entry.bedType})
+                      </p>
+                      <p className="text-muted-foreground text-xs">
+                        {new Date(entry.allocatedAt).toLocaleString()}
+                        {entry.releasedAt ? ` -> ${new Date(entry.releasedAt).toLocaleString()}` : ' (Active)'}
+                      </p>
+                      {entry.admissionReason && <p className="mt-1">Reason: {entry.admissionReason}</p>}
+                    </div>
+                  ))}
+                </div>
+              )}
             </CardContent>
           </Card>
 

@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { query } from '@/lib/db';
+import { query } from '@/lib/db-server';
 import { comparePassword, setAuthCookie, generateToken } from '@/lib/auth';
 
 export async function POST(request: NextRequest) {
   const { patientId, password } = await request.json();
 
-  if (!patientId || !password) {
+  if (!patientId) {
     return NextResponse.json(
-      { error: 'Patient ID and password are required' },
+      { error: 'Patient ID is required' },
       { status: 400 }
     );
   }
@@ -43,6 +43,13 @@ export async function POST(request: NextRequest) {
     }
 
     // For activated patients, verify password
+    if (!password) {
+      return NextResponse.json(
+        { error: 'Password is required for activated accounts' },
+        { status: 400 }
+      );
+    }
+
     if (!preReg.user_id) {
       return NextResponse.json(
         { error: 'Patient account not properly configured' },

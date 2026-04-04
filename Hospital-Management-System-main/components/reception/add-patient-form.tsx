@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { UserPlus, AlertCircle, CheckCircle, Copy, Printer } from 'lucide-react';
@@ -21,6 +22,10 @@ export function AddPatientForm() {
     firstName: '',
     lastName: '',
     phone: '',
+    email: '',
+    age: '',
+    gender: '',
+    address: '',
   });
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -35,8 +40,8 @@ export function AddPatientForm() {
     setIsLoading(true);
 
     // Validate required fields
-    if (!formData.firstName || !formData.lastName) {
-      setError('Please fill in all required fields (First Name, Last Name)');
+    if (!formData.firstName || !formData.lastName || !formData.phone || !formData.age || !formData.gender || !formData.address) {
+      setError('Please fill in all required fields (name, age, gender, mobile, and address)');
       setIsLoading(false);
       return;
     }
@@ -126,7 +131,7 @@ export function AddPatientForm() {
   };
 
   const handleReset = () => {
-    setFormData({ firstName: '', lastName: '', phone: '' });
+    setFormData({ firstName: '', lastName: '', phone: '', email: '', age: '', gender: '', address: '' });
     setSuccess(false);
     setGeneratedPatient(null);
     setError('');
@@ -145,12 +150,10 @@ export function AddPatientForm() {
           Add New Patient
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-w-md">
+      <DialogContent className="w-[96vw] max-w-4xl max-h-[92vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Generate Patient ID</DialogTitle>
-          <DialogDescription>
-            Create an 11-digit patient ID for a new patient
-          </DialogDescription>
+          <DialogDescription>Register first-visit patient and generate unique login ID</DialogDescription>
         </DialogHeader>
 
         {success && generatedPatient ? (
@@ -221,7 +224,7 @@ export function AddPatientForm() {
             </div>
           </div>
         ) : (
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-5">
             {error && (
               <Alert variant="destructive">
                 <AlertCircle className="h-4 w-4" />
@@ -229,47 +232,108 @@ export function AddPatientForm() {
               </Alert>
             )}
 
+            <div className="grid md:grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="firstName">First Name *</Label>
+                <Input
+                  id="firstName"
+                  name="firstName"
+                  value={formData.firstName}
+                  onChange={handleInputChange}
+                  placeholder="John"
+                  required
+                />
+              </div>
+
+              <div>
+                <Label htmlFor="lastName">Last Name *</Label>
+                <Input
+                  id="lastName"
+                  name="lastName"
+                  value={formData.lastName}
+                  onChange={handleInputChange}
+                  placeholder="Doe"
+                  required
+                />
+              </div>
+
+              <div>
+                <Label htmlFor="phone">Mobile Number *</Label>
+                <Input
+                  id="phone"
+                  name="phone"
+                  type="tel"
+                  value={formData.phone}
+                  onChange={handleInputChange}
+                  placeholder="9876543210"
+                  required
+                />
+              </div>
+
+              <div>
+                <Label htmlFor="email">Email (Optional)</Label>
+                <Input
+                  id="email"
+                  name="email"
+                  type="email"
+                  value={formData.email}
+                  onChange={handleInputChange}
+                  placeholder="patient@example.com"
+                />
+              </div>
+            </div>
+
+            <div className="grid md:grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="age">Age *</Label>
+                <Input
+                  id="age"
+                  name="age"
+                  type="number"
+                  min="1"
+                  max="130"
+                  value={formData.age}
+                  onChange={handleInputChange}
+                  placeholder="34"
+                  required
+                />
+              </div>
+
+              <div>
+                <Label htmlFor="gender">Gender *</Label>
+                <Select
+                  value={formData.gender}
+                  onValueChange={(value) => setFormData((prev) => ({ ...prev, gender: value }))}
+                >
+                  <SelectTrigger id="gender">
+                    <SelectValue placeholder="Select gender" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Male">Male</SelectItem>
+                    <SelectItem value="Female">Female</SelectItem>
+                    <SelectItem value="Other">Other</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
             <div>
-              <Label htmlFor="firstName">First Name *</Label>
+              <Label htmlFor="address">Address *</Label>
               <Input
-                id="firstName"
-                name="firstName"
-                value={formData.firstName}
+                id="address"
+                name="address"
+                value={formData.address}
                 onChange={handleInputChange}
-                placeholder="John"
+                placeholder="Street, City"
                 required
               />
             </div>
 
-            <div>
-              <Label htmlFor="lastName">Last Name *</Label>
-              <Input
-                id="lastName"
-                name="lastName"
-                value={formData.lastName}
-                onChange={handleInputChange}
-                placeholder="Doe"
-                required
-              />
-            </div>
-
-            <div>
-              <Label htmlFor="phone">Phone (Optional)</Label>
-              <Input
-                id="phone"
-                name="phone"
-                type="tel"
-                value={formData.phone}
-                onChange={handleInputChange}
-                placeholder="+1 (555) 123-4567"
-              />
-            </div>
-
-            <div className="flex gap-3 pt-2">
+            <div className="flex gap-3 pt-2 md:justify-end">
               <Button
                 type="submit"
                 disabled={isLoading}
-                className="flex-1"
+                className="flex-1 md:flex-none md:min-w-56"
               >
                 {isLoading ? 'Generating ID...' : 'Generate Patient ID'}
               </Button>

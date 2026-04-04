@@ -1,27 +1,31 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { query } from '@/lib/db';
+import { query } from '@/lib/db-server';
 import { comparePassword, setAuthCookie, generateToken } from '@/lib/auth';
-import { validateDemoCredentials } from '@/lib/demo-store';
+import { validateDemoStaffCredentials } from '@/lib/demo-store';
 
 export async function POST(request: NextRequest) {
-  const { email, password } = await request.json();
+  const { staffId, password } = await request.json();
 
-  if (!email || !password) {
+  if (!staffId || !password) {
     return NextResponse.json(
-      { error: 'Email and password are required' },
+      { error: 'Staff ID and password are required' },
       { status: 400 }
     );
   }
 
   try {
+    // Ensure staff_id column exists
+    await query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS staff_id VARCHAR(8) UNIQUE`);
+
     const userResult = await query(
-      'SELECT id, email, password_hash, first_name, last_name, role FROM users WHERE email = $1 AND is_active = true',
-      [email]
+      `SELECT id, email, staff_id, password_hash, first_name, last_name, role, must_change_password
+       FROM users WHERE staff_id = $1 AND is_active = true AND role != 'patient'`,
+      [staffId]
     );
 
     if (userResult.rows.length === 0) {
       return NextResponse.json(
-        { error: 'Invalid email or password' },
+        { error: 'Invalid Staff ID or password' },
         { status: 401 }
       );
     }
@@ -30,7 +34,7 @@ export async function POST(request: NextRequest) {
     const isPasswordValid = await comparePassword(password, user.password_hash);
     if (!isPasswordValid) {
       return NextResponse.json(
-        { error: 'Invalid email or password' },
+        { error: 'Invalid Staff ID or password' },
         { status: 401 }
       );
     }
@@ -43,10 +47,11 @@ export async function POST(request: NextRequest) {
         message: 'Login successful',
         user: {
           id: user.id,
-          email: user.email,
+          staffId: user.staff_id,
           firstName: user.first_name,
           lastName: user.last_name,
           role: user.role,
+          mustChangePassword: user.must_change_password ?? false,
         },
       },
       { status: 200 }
@@ -54,7 +59,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('Login error:', error);
 
-    const demoUser = validateDemoCredentials(email, password);
+    const demoUser = validateDemoStaffCredentials(staffId, password);
     if (demoUser) {
       const token = generateToken(demoUser.id, demoUser.role);
       await setAuthCookie(token);
@@ -64,10 +69,11 @@ export async function POST(request: NextRequest) {
           message: 'Login successful (demo mode)',
           user: {
             id: demoUser.id,
-            email: demoUser.email,
+            staffId: demoUser.staffId,
             firstName: demoUser.firstName,
             lastName: demoUser.lastName,
             role: demoUser.role,
+            mustChangePassword: demoUser.mustChangePassword ?? false,
           },
         },
         { status: 200 }

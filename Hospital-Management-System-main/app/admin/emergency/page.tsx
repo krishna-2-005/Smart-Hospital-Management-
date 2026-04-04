@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { ArrowLeft, AlertTriangle, Download, FileText, Filter, X } from 'lucide-react';
+import { ArrowLeft, AlertTriangle, Clock3, Download, FileText, ShieldAlert, X } from 'lucide-react';
 import { exportToCSV, exportToHTML, getReportTitle, formatDate } from '@/lib/export-utils';
 import {
   Select,
@@ -22,15 +22,35 @@ interface EmergencyCase {
   severity: string;
   description: string;
   status: string;
+  assignedDoctorId: number | null;
   assignedDoctor: string;
+  assignmentAuditTrail: {
+    time: string;
+    actorLabel: string;
+    previousDoctorName: string;
+    newDoctorName: string;
+    note: string;
+  }[];
   createdAt: string;
+}
+
+interface DoctorOption {
+  id: number;
+  name: string;
+  specialization: string;
+  isAvailable: boolean;
 }
 
 export default function EmergencyPage() {
   const [cases, setCases] = useState<EmergencyCase[]>([]);
+  const [doctors, setDoctors] = useState<DoctorOption[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [severityFilter, setSeverityFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [expandedCaseId, setExpandedCaseId] = useState<number | null>(null);
+  const [updatingCaseId, setUpdatingCaseId] = useState<number | null>(null);
+  const [overrideByCase, setOverrideByCase] = useState<Record<number, boolean>>({});
+  const [assignmentErrors, setAssignmentErrors] = useState<Record<number, string>>({});
   const router = useRouter();
 
   const fetchCases = async () => {
@@ -47,18 +67,78 @@ export default function EmergencyPage() {
     }
   };
 
+  const fetchDoctors = async () => {
+    try {
+      const res = await fetch('/api/admin/doctors', { credentials: 'include' });
+      if (res.ok) {
+        const data = await res.json();
+        setDoctors(data.doctors || []);
+      }
+    } catch (error) {
+      console.error('Error loading doctors:', error);
+    }
+  };
+
   useEffect(() => {
     fetchCases();
+    fetchDoctors();
+    const interval = setInterval(fetchCases, 15000);
+    return () => clearInterval(interval);
   }, []);
 
   const updateStatus = async (caseId: number, status: string) => {
-    await fetch('/api/admin/emergency', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify({ caseId, status }),
-    });
-    fetchCases();
+    setUpdatingCaseId(caseId);
+    try {
+      await fetch('/api/admin/emergency', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ caseId, status }),
+      });
+      fetchCases();
+    } finally {
+      setUpdatingCaseId(null);
+    }
+  };
+
+  const updateAssignment = async (caseId: number, assignedDoctorId: number | null, forceOverride = false) => {
+    setUpdatingCaseId(caseId);
+    try {
+      const response = await fetch('/api/admin/emergency', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ caseId, assignedDoctorId, forceOverride }),
+      });
+
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null);
+        setAssignmentErrors((prev) => ({
+          ...prev,
+          [caseId]: payload?.error || 'Unable to update assignment right now.',
+        }));
+        return;
+      }
+
+      setAssignmentErrors((prev) => {
+        const next = { ...prev };
+        delete next[caseId];
+        return next;
+      });
+      fetchCases();
+    } finally {
+      setUpdatingCaseId(null);
+    }
+  };
+
+  const isGuardedCase = (item: EmergencyCase) => item.severity === 'critical' && item.status === 'pending';
+
+  const getAssignableDoctors = (item: EmergencyCase) => {
+    const overrideEnabled = Boolean(overrideByCase[item.id]);
+    if (!isGuardedCase(item) || overrideEnabled) {
+      return doctors;
+    }
+    return doctors.filter((doctor) => doctor.isAvailable || doctor.id === item.assignedDoctorId);
   };
 
   // Filter cases
@@ -83,6 +163,46 @@ export default function EmergencyPage() {
       default:
         return 'bg-muted text-muted-foreground';
     }
+  };
+
+  const statusClass = (status: string) => {
+    switch (status) {
+      case 'pending':
+        return 'bg-amber-100 text-amber-800 border-amber-300';
+      case 'in-progress':
+        return 'bg-blue-100 text-blue-800 border-blue-300';
+      case 'resolved':
+        return 'bg-green-100 text-green-800 border-green-300';
+      default:
+        return 'bg-muted text-muted-foreground';
+    }
+  };
+
+  const getElapsedMinutes = (createdAt: string) => {
+    const started = new Date(createdAt).getTime();
+    const now = Date.now();
+    return Math.max(1, Math.floor((now - started) / 60000));
+  };
+
+  const getProgressPercent = (status: string) => {
+    switch (status) {
+      case 'pending':
+        return 25;
+      case 'in-progress':
+        return 65;
+      case 'resolved':
+        return 100;
+      default:
+        return 0;
+    }
+  };
+
+  const getRecommendedAction = (item: EmergencyCase) => {
+    const elapsed = getElapsedMinutes(item.createdAt);
+    if (item.status === 'resolved') return 'Case closed. Prepare post-incident review.';
+    if (item.severity === 'critical' || elapsed > 20) return 'Escalate to rapid response and confirm ICU readiness.';
+    if (item.status === 'pending') return 'Start triage immediately and assign available emergency doctor.';
+    return 'Monitor treatment progress and update family communication channel.';
   };
 
   const handleExportCSV = () => {
@@ -205,6 +325,20 @@ export default function EmergencyPage() {
                 </Button>
               </div>
             </div>
+            <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="rounded-lg border border-amber-300/40 bg-amber-50/60 px-3 py-2">
+                <p className="text-xs text-muted-foreground">Pending</p>
+                <p className="text-xl font-bold text-amber-700">{cases.filter(c => c.status === 'pending').length}</p>
+              </div>
+              <div className="rounded-lg border border-blue-300/40 bg-blue-50/60 px-3 py-2">
+                <p className="text-xs text-muted-foreground">In Progress</p>
+                <p className="text-xl font-bold text-blue-700">{cases.filter(c => c.status === 'in-progress').length}</p>
+              </div>
+              <div className="rounded-lg border border-green-300/40 bg-green-50/60 px-3 py-2">
+                <p className="text-xs text-muted-foreground">Resolved</p>
+                <p className="text-xl font-bold text-green-700">{cases.filter(c => c.status === 'resolved').length}</p>
+              </div>
+            </div>
           </CardHeader>
           <CardContent className="space-y-6">
             {/* Filters */}
@@ -286,47 +420,155 @@ export default function EmergencyPage() {
               <div className="space-y-3">
                 {filteredCases.map((item) => (
                   <div key={item.id} className="rounded-lg border border-secondary/20 p-4 hover:border-secondary/40 transition-colors">
+                    {(() => {
+                      const guarded = isGuardedCase(item);
+                      const overrideEnabled = Boolean(overrideByCase[item.id]);
+                      const assignableDoctors = getAssignableDoctors(item);
+
+                      return (
+                        <>
                     <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                       <div>
                         <p className="font-semibold text-foreground">{item.patientName}</p>
-                        <p className="text-sm text-muted-foreground">{item.patientId}</p>
+                        <p className="text-sm text-muted-foreground">{item.patientId} | Case #{item.id}</p>
                       </div>
                       <div className="flex items-center gap-2">
                         <Badge className={severityClass(item.severity)}>
                           {item.severity.charAt(0).toUpperCase() + item.severity.slice(1)}
                         </Badge>
-                        <Badge variant="outline" className="capitalize">{item.status}</Badge>
+                        <Badge variant="outline" className={`capitalize ${statusClass(item.status)}`}>{item.status.replace('-', ' ')}</Badge>
                       </div>
                     </div>
                     <p className="text-sm text-muted-foreground mb-2">{item.description}</p>
                     <p className="text-xs text-muted-foreground mb-3">
                       <strong>Assigned:</strong> {item.assignedDoctor} | <strong>Reported:</strong> {formatDate(item.createdAt)}
                     </p>
-                    <div className="flex gap-2">
-                      {item.status !== 'resolved' && (
-                        <>
-                          {item.status !== 'in-progress' && (
-                            <Button 
-                              size="sm" 
-                              variant="outline" 
-                              onClick={() => updateStatus(item.id, 'in-progress')}
-                            >
-                              Mark In Progress
-                            </Button>
-                          )}
-                          <Button 
-                            size="sm" 
-                            variant="secondary" 
-                            onClick={() => updateStatus(item.id, 'resolved')}
-                          >
-                            Mark Resolved
-                          </Button>
-                        </>
+                    <div className="flex flex-wrap items-center gap-2 mb-3">
+                      <Select
+                        value={item.assignedDoctorId ? String(item.assignedDoctorId) : 'unassigned'}
+                        onValueChange={(value) =>
+                          updateAssignment(
+                            item.id,
+                            value === 'unassigned' ? null : Number(value),
+                            overrideEnabled
+                          )
+                        }
+                        disabled={updatingCaseId === item.id}
+                      >
+                        <SelectTrigger className="w-56">
+                          <SelectValue placeholder="Assign doctor" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="unassigned">Unassigned</SelectItem>
+                          {assignableDoctors.map((doctor) => (
+                            <SelectItem key={doctor.id} value={String(doctor.id)}>
+                              {doctor.name} ({doctor.specialization}){doctor.isAvailable ? '' : ' - Busy'}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+
+                      {guarded && (
+                        <Button
+                          size="sm"
+                          variant={overrideEnabled ? 'default' : 'outline'}
+                          onClick={() =>
+                            setOverrideByCase((prev) => ({
+                              ...prev,
+                              [item.id]: !overrideEnabled,
+                            }))
+                          }
+                          disabled={updatingCaseId === item.id}
+                        >
+                          {overrideEnabled ? 'Override Enabled' : 'Enable Override'}
+                        </Button>
                       )}
-                      {item.status === 'resolved' && (
-                        <Badge variant="outline" className="bg-green-50">Resolved</Badge>
-                      )}
+
+                      <Select
+                        value={item.status}
+                        onValueChange={(value) => updateStatus(item.id, value)}
+                        disabled={updatingCaseId === item.id}
+                      >
+                        <SelectTrigger className="w-44">
+                          <SelectValue placeholder="Update status" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="pending">Pending Triage</SelectItem>
+                          <SelectItem value="in-progress">Treatment In Progress</SelectItem>
+                          <SelectItem value="resolved">Resolved & Closed</SelectItem>
+                        </SelectContent>
+                      </Select>
+
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setExpandedCaseId(expandedCaseId === item.id ? null : item.id)}
+                      >
+                        {expandedCaseId === item.id ? 'Hide Live Tracker' : 'Open Live Tracker'}
+                      </Button>
+
+                      <Badge variant="outline" className="bg-secondary/5">
+                        <Clock3 className="w-3 h-3 mr-1" />
+                        {getElapsedMinutes(item.createdAt)} min active
+                      </Badge>
                     </div>
+
+                    {guarded && !overrideEnabled && (
+                      <p className="mb-3 text-xs text-amber-700">
+                        Guard active: only available doctors are shown for pending critical assignments.
+                      </p>
+                    )}
+
+                    {assignmentErrors[item.id] && (
+                      <p className="mb-3 text-xs text-destructive">{assignmentErrors[item.id]}</p>
+                    )}
+
+                    {expandedCaseId === item.id && (
+                      <div className="rounded-md border border-secondary/20 bg-secondary/5 p-3 space-y-3">
+                        <div>
+                          <div className="flex items-center justify-between text-xs mb-1">
+                            <span className="text-muted-foreground">Live Case Progress</span>
+                            <span className="font-semibold text-foreground">{getProgressPercent(item.status)}%</span>
+                          </div>
+                          <div className="h-2 rounded-full bg-secondary/20">
+                            <div className="h-2 rounded-full bg-secondary transition-all" style={{ width: `${getProgressPercent(item.status)}%` }} />
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+                          <div className="rounded-md border border-secondary/20 bg-background p-2">
+                            <p className="text-xs text-muted-foreground uppercase mb-1">Current Status</p>
+                            <p className="font-semibold capitalize">{item.status.replace('-', ' ')}</p>
+                          </div>
+                          <div className="rounded-md border border-secondary/20 bg-background p-2">
+                            <p className="text-xs text-muted-foreground uppercase mb-1">Realtime Recommendation</p>
+                            <p className="font-semibold text-foreground">{getRecommendedAction(item)}</p>
+                          </div>
+                        </div>
+
+                        <div className="rounded-md border border-secondary/20 bg-background p-3 text-sm">
+                          <p className="text-xs text-muted-foreground uppercase mb-2 flex items-center gap-1">
+                            <ShieldAlert className="w-3.5 h-3.5" />
+                            Incident Status Timeline
+                          </p>
+                          <div className="space-y-1 text-muted-foreground">
+                            <p>1. Reported at {formatDate(item.createdAt)}</p>
+                            {(item.status === 'in-progress' || item.status === 'resolved') && (
+                              <p>2. Triage and treatment started</p>
+                            )}
+                            {item.status === 'resolved' && <p>3. Case resolved and closed</p>}
+                            {item.assignmentAuditTrail?.map((event, index) => (
+                              <p key={`${event.time}-${index}`}>
+                                {index + (item.status === 'resolved' ? 4 : item.status === 'in-progress' ? 3 : 2)}. {formatDate(event.time)} - {event.actorLabel} used override and reassigned from {event.previousDoctorName} to {event.newDoctorName}.
+                              </p>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                        </>
+                      );
+                    })()}
                   </div>
                 ))}
               </div>

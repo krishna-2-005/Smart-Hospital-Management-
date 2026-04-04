@@ -1,12 +1,12 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Empty } from '@/components/ui/empty';
-import { Heart, Users, LogOut, Stethoscope, AlertTriangle, ChevronDown, FileText, UserCheck } from 'lucide-react';
+import { Empty, EmptyMedia, EmptyTitle, EmptyDescription } from '@/components/ui/empty';
+import { Heart, Users, LogOut, Stethoscope, AlertTriangle, ChevronDown, FileText, UserCheck, ShieldAlert } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -38,6 +38,14 @@ export default function DoctorQueuePage() {
   const [isLoading, setIsLoading] = useState(true);
   const [expandedPatient, setExpandedPatient] = useState<number | null>(null);
   const [patientDetails, setPatientDetails] = useState<Record<number, PatientDetails>>({});
+  const [pendingEmergencyAlerts, setPendingEmergencyAlerts] = useState(0);
+  const [latestEmergency, setLatestEmergency] = useState<{
+    requestId: number;
+    message: string;
+    category: string;
+    alertId: number | null;
+  } | null>(null);
+  const [isAckingEmergency, setIsAckingEmergency] = useState(false);
   const router = useRouter();
 
   // Mock patient health data - in production, this would come from the API
@@ -79,6 +87,56 @@ export default function DoctorQueuePage() {
     return () => clearInterval(interval);
   }, []);
 
+  useEffect(() => {
+    const loadEmergencyInbox = async () => {
+      try {
+        const res = await fetch('/api/doctor/emergency-response', { credentials: 'include' });
+        if (!res.ok) return;
+        const data = await res.json();
+        setPendingEmergencyAlerts(Number(data.pendingEmergencyAlerts || 0));
+        const firstPending = (data.pending || []).find((item: any) => item.unacknowledgedCount > 0 && item.latestEmergencyAlert);
+        if (firstPending?.latestEmergencyAlert) {
+          setLatestEmergency({
+            requestId: firstPending.requestId,
+            message: firstPending.latestEmergencyAlert.message,
+            category: firstPending.latestEmergencyAlert.category,
+            alertId: firstPending.latestEmergencyAlert.id ?? null,
+          });
+        } else {
+          setLatestEmergency(null);
+        }
+      } catch (error) {
+        console.error('Failed to load doctor emergency inbox', error);
+      }
+    };
+
+    loadEmergencyInbox();
+    const interval = setInterval(loadEmergencyInbox, 6000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const acknowledgeEmergencyAlert = async () => {
+    if (!latestEmergency) return;
+    setIsAckingEmergency(true);
+    try {
+      await fetch('/api/doctor/emergency-response', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          requestId: latestEmergency.requestId,
+          alertId: latestEmergency.alertId || undefined,
+        }),
+      });
+      setLatestEmergency(null);
+      setPendingEmergencyAlerts((prev) => Math.max(0, prev - 1));
+    } catch (error) {
+      console.error('Failed to acknowledge emergency alert', error);
+    } finally {
+      setIsAckingEmergency(false);
+    }
+  };
+
   const handleLogout = async () => {
     await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
     router.push('/auth/login');
@@ -112,29 +170,35 @@ export default function DoctorQueuePage() {
     return allergies && allergies !== 'None documented' && allergies.toLowerCase() !== 'none';
   };
 
+  const triageLoad = useMemo(() => {
+    const emergencyCount = queue.filter((p) => p.priority === 'emergency').length;
+    const highCount = queue.filter((p) => p.priority === 'high').length;
+    const score = emergencyCount * 3 + highCount * 2 + queue.length;
+    if (score > 16) return 'Critical';
+    if (score > 9) return 'Elevated';
+    return 'Stable';
+  }, [queue]);
+
+  const riskFlags = useMemo(() => {
+    return queue.filter((patient) => {
+      const details = patientDetails[patient.id];
+      return details?.allergies && hasAllergyConflict(details.allergies);
+    }).length;
+  }, [queue, patientDetails]);
+
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
-      <header className="border-b border-secondary/10 sticky top-0 bg-background/95 z-50">
-        <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Heart className="w-6 h-6 text-primary" />
-            <div>
-              <h1 className="text-xl font-bold text-primary">Doctor Queue</h1>
-              <p className="text-xs text-muted-foreground">Patient consultation management</p>
-            </div>
-          </div>
-          <Button variant="outline" size="sm" onClick={handleLogout}>
-            <LogOut className="w-4 h-4 mr-2" />
-            Logout
-          </Button>
+      <header className="border-b border-secondary/10 sticky top-0 bg-background/95 z-10">
+        <div className="max-w-7xl mx-auto px-4 py-4">
+          <h1 className="text-xl font-bold text-primary">Doctor Queue</h1>
         </div>
       </header>
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 py-8">
         {/* Stats */}
-        <div className="grid md:grid-cols-4 gap-4 mb-8">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4 mb-8">
           <Card className="border-secondary/20">
             <CardContent className="pt-6">
               <div>
@@ -181,6 +245,78 @@ export default function DoctorQueuePage() {
           </Card>
         </div>
 
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-3 mb-8">
+          <Card className="border-secondary/20 lg:col-span-2 bg-gradient-to-br from-secondary/5 to-primary/5">
+            <CardHeader>
+              <CardTitle className="text-lg">Clinical Focus Panel</CardTitle>
+              <CardDescription>Quick decisions for safer and faster consultations</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                <div className="rounded-lg border border-destructive/20 bg-destructive/5 p-3">
+                  <p className="text-xs uppercase text-muted-foreground">Triage Load</p>
+                  <p className="text-xl font-bold text-destructive mt-1">{triageLoad}</p>
+                </div>
+                <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 p-3">
+                  <p className="text-xs uppercase text-muted-foreground">Risk Flags</p>
+                  <p className="text-xl font-bold text-amber-700 mt-1">{riskFlags}</p>
+                </div>
+                <div className="rounded-lg border border-blue-500/20 bg-blue-500/5 p-3">
+                  <p className="text-xs uppercase text-muted-foreground">Consulting Now</p>
+                  <p className="text-xl font-bold text-blue-700 mt-1">
+                    {queue.filter((p) => p.status === 'in-consultation').length}
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="border-secondary/20">
+            <CardHeader>
+              <CardTitle className="text-lg">Safety Checklist</CardTitle>
+              <CardDescription>Use before prescribing or discharging</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-2 text-sm">
+              <div className="rounded-md border border-secondary/20 bg-secondary/5 p-2">Confirm allergy history</div>
+              <div className="rounded-md border border-secondary/20 bg-secondary/5 p-2">Verify chronic conditions</div>
+              <div className="rounded-md border border-secondary/20 bg-secondary/5 p-2">Check latest vitals and notes</div>
+              <div className="rounded-md border border-secondary/20 bg-secondary/5 p-2">Set follow-up or discharge plan</div>
+            </CardContent>
+          </Card>
+        </div>
+
+        <Card className="border-destructive/20 bg-destructive/5 mb-8">
+          <CardHeader>
+            <CardTitle className="text-lg flex items-center gap-2">
+              <ShieldAlert className="w-5 h-5 text-destructive" />
+              Emergency Coordination Link
+            </CardTitle>
+            <CardDescription>
+              Pending hospital acknowledgements: {pendingEmergencyAlerts}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3 text-sm">
+            {latestEmergency ? (
+              <>
+                <div className="rounded-md border border-destructive/30 bg-background p-3">
+                  <p className="text-xs uppercase text-muted-foreground">{latestEmergency.category.replace(/-/g, ' ')}</p>
+                  <p className="mt-1">{latestEmergency.message}</p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button variant="destructive" onClick={acknowledgeEmergencyAlert} disabled={isAckingEmergency}>
+                    {isAckingEmergency ? 'Acknowledging...' : 'Acknowledge Emergency Alert'}
+                  </Button>
+                  <Button variant="outline" onClick={() => router.push('/doctor/emergency-response')}>
+                    Open Command Center
+                  </Button>
+                </div>
+              </>
+            ) : (
+              <p className="text-muted-foreground">No pending emergency alert acknowledgement for hospital team.</p>
+            )}
+          </CardContent>
+        </Card>
+
         {/* Queue List */}
         <Card className="border-secondary/20">
           <CardHeader>
@@ -194,11 +330,13 @@ export default function DoctorQueuePage() {
             {isLoading ? (
               <div className="text-center py-8">Loading queue...</div>
             ) : queue.length === 0 ? (
-              <Empty
-                icon={Users}
-                title="No Patients in Queue"
-                description="All caught up! No patients waiting at the moment."
-              />
+              <Empty>
+                <EmptyMedia variant="icon">
+                  <Users className="size-6" />
+                </EmptyMedia>
+                <EmptyTitle>No Patients in Queue</EmptyTitle>
+                <EmptyDescription>All caught up! No patients waiting at the moment.</EmptyDescription>
+              </Empty>
             ) : (
               <div className="space-y-3">
                 {queue.map((patient, index) => {
@@ -230,7 +368,7 @@ export default function DoctorQueuePage() {
                             <div className="flex items-center gap-2 mb-1">
                               <p className="font-semibold text-foreground text-lg">{patient.patientName}</p>
                               {hasAllergies && (
-                                <AlertTriangle className="w-4 h-4 text-amber-600" title="Patient has allergies" />
+                                <AlertTriangle className="w-4 h-4 text-amber-600" />
                               )}
                             </div>
                             <p className="text-sm text-muted-foreground">

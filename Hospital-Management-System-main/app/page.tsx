@@ -1,55 +1,23 @@
 'use client';
 
 import React, { useEffect } from 'react';
-import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Heart, Stethoscope, Users, Zap } from 'lucide-react';
 
 export default function Home() {
-  const router = useRouter();
-  const [isInitializing, setIsInitializing] = React.useState(true);
-
   useEffect(() => {
-    // Initialize database first
+    // Initialize database in background for first-run setup.
     const initializeApp = async () => {
       try {
         await fetch('/api/init', { method: 'GET' });
       } catch (error) {
         console.error('Database initialization skipped:', error);
-        // Continue anyway - database might be already initialized
-      }
-
-      // Check if user is authenticated
-      try {
-        const response = await fetch('/api/auth/profile', {
-          credentials: 'include',
-        });
-
-        if (response.ok) {
-          try {
-            const data = await response.json();
-            const roleRedirects: Record<string, string> = {
-              admin: '/admin/dashboard',
-              doctor: '/doctor/queue',
-              reception: '/reception/queue',
-              patient: '/patient/dashboard',
-            };
-            router.push(roleRedirects[data.role] || '/');
-            return;
-          } catch {
-            // JSON parse error, show landing page
-          }
-        }
-      } catch (error) {
-        // Not authenticated, show landing page
-      } finally {
-        setIsInitializing(false);
       }
     };
 
     initializeApp();
-  }, [router]);
+  }, []);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-secondary/5 to-background">
@@ -61,11 +29,11 @@ export default function Home() {
             <h1 className="text-2xl font-bold text-primary">HealthHub</h1>
           </div>
           <div className="flex gap-3">
-            <Link href="/auth/login">
-              <Button variant="outline">Sign In</Button>
+            <Link href="/auth/login" className="cursor-pointer">
+              <Button variant="outline" className="hover:scale-105 transition-transform duration-200">Staff Login</Button>
             </Link>
-            <Link href="/auth/register">
-              <Button>Get Started</Button>
+            <Link href="/auth/patient-setup" className="cursor-pointer">
+              <Button className="hover:scale-105 transition-transform duration-200">Patient Login</Button>
             </Link>
           </div>
         </div>
@@ -81,19 +49,21 @@ export default function Home() {
           Streamline patient care, manage queues efficiently, allocate beds intelligently, and respond to emergencies with precision.
         </p>
         <div className="flex gap-4 justify-center flex-wrap">
-          <Link href="/auth/register">
-            <Button size="lg" className="bg-primary hover:bg-primary/90">
-              Start Free Trial
+          <Link href="/auth/login" className="cursor-pointer">
+            <Button size="lg" className="bg-primary hover:bg-primary/90 hover:scale-105 transition-all duration-200">
+              Staff Login
             </Button>
           </Link>
-          <Link href="/emergency">
-            <Button size="lg" variant="destructive">
+          <Link href="/auth/patient-setup" className="cursor-pointer">
+            <Button size="lg" variant="outline" className="hover:scale-105 transition-all duration-200">
+              Patient Login
+            </Button>
+          </Link>
+          <Link href="/emergency" className="cursor-pointer">
+            <Button size="lg" variant="destructive" className="hover:scale-105 transition-all duration-200">
               Emergency Without Login
             </Button>
           </Link>
-          <Button size="lg" variant="outline">
-            Watch Demo
-          </Button>
         </div>
       </section>
 
@@ -127,10 +97,10 @@ export default function Home() {
             return (
               <div
                 key={idx}
-                className="p-6 rounded-lg bg-card border border-secondary/10 hover:border-secondary/30 transition-colors"
+                className="p-6 rounded-lg bg-card border border-secondary/10 hover:border-secondary/30 hover:shadow-lg hover:scale-105 transition-all duration-300 cursor-pointer group"
               >
-                <Icon className="w-10 h-10 text-secondary mb-4" />
-                <h4 className="text-lg font-semibold text-foreground mb-2">{feature.title}</h4>
+                <Icon className="w-10 h-10 text-secondary mb-4 group-hover:text-primary transition-colors duration-300" />
+                <h4 className="text-lg font-semibold text-foreground mb-2 group-hover:text-primary transition-colors duration-300">{feature.title}</h4>
                 <p className="text-sm text-muted-foreground">{feature.description}</p>
               </div>
             );
@@ -143,15 +113,15 @@ export default function Home() {
         <h3 className="text-2xl font-bold text-foreground mb-8 text-center">Try Demo Accounts</h3>
         <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
           {[
-            { role: 'Admin', email: 'admin@hospital.com', password: 'admin123' },
-            { role: 'Doctor', email: 'doctor@hospital.com', password: 'doctor123' },
-            { role: 'Reception', email: 'reception@hospital.com', password: 'reception123' },
-            { role: 'Patient', email: 'patient@hospital.com', password: 'patient123' },
+            { role: 'Admin', staffId: 'A1000001', password: '123456' },
+            { role: 'Doctor', staffId: 'D1000002', password: '123456' },
+            { role: 'Reception', staffId: 'R1000003', password: '123456' },
+            { role: 'Driver', staffId: 'E1000004', password: '123456' },
           ].map((demo, idx) => (
-            <div key={idx} className="p-4 bg-card rounded border border-secondary/20">
-              <p className="font-semibold text-foreground mb-2">{demo.role}</p>
+            <div key={idx} className="p-4 bg-card rounded border border-secondary/20 hover:border-secondary/40 hover:shadow-md hover:scale-105 transition-all duration-300 cursor-pointer group">
+              <p className="font-semibold text-foreground mb-2 group-hover:text-primary transition-colors duration-300">{demo.role}</p>
               <p className="text-xs text-muted-foreground mb-1">
-                <span className="font-mono bg-secondary/10 px-2 py-1 rounded">{demo.email}</span>
+                <span className="font-mono bg-secondary/10 px-2 py-1 rounded">Staff ID: {demo.staffId}</span>
               </p>
               <p className="text-xs text-muted-foreground">
                 <span className="font-mono bg-secondary/10 px-2 py-1 rounded">{demo.password}</span>
@@ -160,8 +130,8 @@ export default function Home() {
           ))}
         </div>
         <div className="text-center mt-8">
-          <Link href="/auth/login">
-            <Button className="bg-primary hover:bg-primary/90">Try Demo Now</Button>
+          <Link href="/auth/login" className="cursor-pointer">
+            <Button className="bg-primary hover:bg-primary/90 hover:scale-105 transition-all duration-200">Try Demo Now</Button>
           </Link>
         </div>
       </section>
