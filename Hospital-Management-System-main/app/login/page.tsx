@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
-import { Heart, AlertCircle, ShieldCheck } from 'lucide-react';
+import { Heart, ShieldCheck, AlertCircle } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 import { auth } from '@/lib/firebase';
@@ -17,7 +17,7 @@ export default function StaffLogin() {
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
-  
+
   const router = useRouter();
   const { toast } = useToast();
 
@@ -27,17 +27,14 @@ export default function StaffLogin() {
     setIsLoading(true);
 
     try {
-      // Firebase Authentication
-      const userCredential = await signInWithEmailAndPassword(auth, email, password);
-      const user = userCredential.user;
+      await signInWithEmailAndPassword(auth, email, password);
 
       toast({
-        title: "Welcome back!",
-        description: "Logged in successfully",
+        title: "Login Successful",
+        description: "Welcome back!",
       });
 
-      // TODO: Later we will get role from Firestore or custom claims
-      // For now, redirect based on email (you can improve this later)
+      // Simple redirect based on email (we will improve this later)
       if (email.includes('admin')) {
         router.push('/admin/dashboard');
       } else if (email.includes('doctor')) {
@@ -45,9 +42,8 @@ export default function StaffLogin() {
       } else if (email.includes('reception')) {
         router.push('/reception/dashboard');
       } else {
-        router.push('/'); // default
+        router.push('/');
       }
-
     } catch (err: any) {
       setError(err.message || 'Invalid email or password');
     } finally {
@@ -66,10 +62,10 @@ export default function StaffLogin() {
           <p className="text-muted-foreground">Hospital Staff Portal</p>
         </div>
 
-        <Card className="border-primary/10">
+        <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <ShieldCheck className="w-5 h-5 text-secondary" />
+              <ShieldCheck className="w-5 h-5" />
               Staff Login
             </CardTitle>
             <CardDescription>Sign in with your hospital email</CardDescription>
@@ -85,11 +81,8 @@ export default function StaffLogin() {
               )}
 
               <div className="space-y-2">
-                <label htmlFor="email" className="text-sm font-medium text-foreground">
-                  Email Address
-                </label>
+                <label className="text-sm font-medium">Email Address</label>
                 <Input
-                  id="email"
                   type="email"
                   placeholder="staff@hospital.com"
                   value={email}
@@ -100,11 +93,8 @@ export default function StaffLogin() {
               </div>
 
               <div className="space-y-2">
-                <label htmlFor="password" className="text-sm font-medium text-foreground">
-                  Password
-                </label>
+                <label className="text-sm font-medium">Password</label>
                 <Input
-                  id="password"
                   type="password"
                   placeholder="Enter your password"
                   value={password}
@@ -114,38 +104,18 @@ export default function StaffLogin() {
                 />
               </div>
 
-              <Button 
-                type="submit" 
-                disabled={isLoading} 
-                className="w-full bg-primary hover:bg-primary/90"
-              >
+              <Button type="submit" className="w-full" disabled={isLoading}>
                 {isLoading ? 'Signing in...' : 'Sign In'}
               </Button>
             </form>
 
-            <div className="mt-6 pt-4 border-t border-secondary/10 text-center">
-              <p className="text-sm text-muted-foreground mb-3">Are you a patient?</p>
+            <div className="mt-6 text-center">
               <Link href="/auth/patient-setup">
-                <Button variant="outline" className="w-full border-secondary/30">
+                <Button variant="outline" className="w-full">
                   Patient Login
                 </Button>
               </Link>
             </div>
-          </CardContent>
-        </Card>
-
-        {/* Demo Info */}
-        <Card className="mt-4 bg-secondary/5 border-secondary/20">
-          <CardContent className="pt-4 pb-4">
-            <p className="text-xs text-muted-foreground">
-              Demo Accounts (create these emails in Firebase Auth):
-            </p>
-            <div className="mt-2 text-xs space-y-1 text-muted-foreground">
-              <p>admin@hospital.com</p>
-              <p>doctor@hospital.com</p>
-              <p>reception@hospital.com</p>
-            </div>
-            <p className="text-xs mt-3 italic">Password: Use any password you set during signup</p>
           </CardContent>
         </Card>
       </div>
